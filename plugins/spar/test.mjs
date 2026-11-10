@@ -37,6 +37,9 @@ function makeHarness({ text = "opponent reply", finish = { kind: "stop" }, dir, 
       { id: "antigravity", name: "Antigravity" },
       { id: "zexkora", name: "Zexkora" },
     ],
+    // A catalog, so the `models` action and the panel have something to list.
+    listModels: async (provider) =>
+      provider === "antigravity" ? [{ id: "gemini-3.8-flash", name: "Gemini 3.8 Flash" }] : [{ id: "deepseek-v4.1-flash-1017" }],
     stream(options) {
       calls.push(options);
       const answer = typeof text === "function" ? text(options) : text;
@@ -697,6 +700,11 @@ const exec = { signal: undefined };
   const seen = JSON.stringify(judgeCall.messages ?? "");
   includes(seen, "MARKER-ONLY-IN-THE-DEBATE-REPO", "the arbiter opened the file from the debate's cwd");
   includes(String(judgeCall.system), "open at least one artefact per side", "and was told to verify artefacts");
+  includes(
+    String(judgeCall.system),
+    "counts at full weight",
+    "familiarity costs evidence, not the claim: a surviving familiar argument keeps its weight",
+  );
   cleanup();
 }
 
@@ -725,6 +733,17 @@ const exec = { signal: undefined };
   }
   includes(message, "судья не выбран", "verdict refuses to pick a judge");
   includes(message, 'judge:"self"', "and names the explicit opt-in");
+  cleanup();
+}
+
+// 31. the catalog is reachable from the tool, not only from the browser
+{
+  const { dir, cleanup } = sandboxDir("models");
+  const { tool } = makeHarness({ dir });
+  const result = await tool.execute({ action: "models" }, exec);
+  includes(result.text, "spar models", "the action answers with a header the card understands");
+  includes(result.text, "antigravity/gemini-3.8-flash", "and lists provider/model pairs");
+  includes(result.text, "without aliases", "and says aliases are optional");
   cleanup();
 }
 

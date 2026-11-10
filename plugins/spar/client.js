@@ -368,6 +368,7 @@ window.__ModuleLoader__.load({
 				else if (field.includes("/")) model = field.slice(field.lastIndexOf("/") + 1);
 				else if (field === "verdict") tag = "приговор";
 				else if (field === "duel") tag = "дуэль";
+				else if (field === "models") tag = "каталог";
 				else if (/^r\d+$/.test(field)) tag = `раунд ${field.slice(1)}`;
 				else if (/^result\b/.test(field)) {
 					// A collected turn: its prose already lives in the turn's own card,

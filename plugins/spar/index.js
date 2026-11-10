@@ -37,7 +37,7 @@ import path from "node:path";
 
 import { ALLOWED_TOOL_NAMES, TOOL_SCHEMAS, runTool } from "./tools.js";
 import { createLiveRegistry, liveHandler } from "./live.js";
-import { createSettingsStore, modelsHandler, settingsHandler } from "./settings.js";
+import { createSettingsStore, modelCatalog, modelsHandler, settingsHandler } from "./settings.js";
 
 export const name = "spar";
 
@@ -534,7 +534,7 @@ function duelPrompt(debate, side, config) {
 
 const JUDGE_SYSTEM = [
   "You are an arbiter with no stake in this exchange. You did not take part in it, you do not know who wrote which side, and you must not try to guess: the sides are labelled A and B on purpose, and their order was randomised for this ruling.",
-  "One side may be your own earlier argument. Treat that as a reason for more scrutiny, never less: recognising a sentence as something you would have written is a warning sign, not evidence. Flag it in section 1 and judge it by the same standard as the other side.",
+  "One side may be your own earlier argument. Be stricter with the evidence it presents, never with the claim itself: a familiar argument that survives your checks counts at full weight. If you discount it anyway, name the specific unverified claim you discounted. Acquaintance is a reason to look, not a reason to lean. Report that check in section 1 as a check of support, not as a suspicion of the prose.",
   "Judge the arguments only. Length, tone, fluency, and confidence are not evidence; a side that sounds familiar is not therefore right, and a side that sounds like you is not therefore wrong.",
   "Verification is part of the ruling, not a courtesy. You have tools and the project is on disk: before you rule, open at least one artefact per side (a cited file, a cited line, a command's output) and say in section 5 whether it held. A `path:line` or a `test: command` you did not check is unverified and supports nothing.",
   "Each side's entry ends with what it actually read. If a side cites a path that is missing from its own list, name it a fabricated source in section 4 and discount every claim resting on it.",
@@ -808,9 +808,9 @@ const PARAMETERS = {
   properties: {
     action: {
       type: "string",
-      enum: ["open", "say", "duel", "verdict", "result", "show", "list", "close"],
+      enum: ["open", "say", "duel", "verdict", "result", "show", "list", "models", "close"],
       description:
-        "open: start a debate; say: your turn in it; duel: two models argue while you watch; verdict: a third model judges; result: read the newest turn (for async runs); show: full transcript; list: debates + routes; close: mark closed.",
+        "open: start a debate; say: your turn in it; duel: two models argue while you watch; verdict: a third model judges; result: read the newest turn (for async runs); show: full transcript; list: debates + routes; models: the provider/model catalog of this harness; close: mark closed.",
     },
     id: { type: "string", description: 'Debate id, e.g. "d3". Required for say, verdict, show, close.' },
     topic: { type: "string", description: "The proposition or question under dispute (open, duel)." },
@@ -1169,6 +1169,20 @@ export function apply(ctx, rawConfig = {}) {
       };
 
       if (action === "list") return { text: await listText(ctx, config) };
+
+      if (action === "models") {
+        // The catalog used to be reachable only over HTTP, which made a terminal
+        // user read a URL or edit YAML before their first debate. The panel is a
+        // client of this list, not the gate to it.
+        const { models } = await modelCatalog(resolveLlm(ctx));
+        const rows = models.map((model) => `${model.label}${model.chat === false ? "   (not a chat model)" : ""}`);
+        return {
+          text:
+            `[spar models · ${rows.length}]\n${rows.join("\n")}\n\n` +
+            "Use any of these as `opponent`, `judge` or `challenger`. `provider/model` works without aliases; " +
+            'a bad name fails at the provider, not here.',
+        };
+      }
 
       if (action === "open") {
         const topic = typeof args?.topic === "string" ? args.topic.trim() : "";
