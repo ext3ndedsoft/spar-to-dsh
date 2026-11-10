@@ -71,7 +71,7 @@ if (typeof component !== "function") throw new Error("component was not register
 if (typeof panel !== "function") throw new Error("settings panel was not registered");
 
 const pill = strings(expand(panel())).join(" | ");
-if (!pill.includes("спор")) throw new Error(`panel pill rendered "${pill}"`);
+if (!pill.includes("spar")) throw new Error(`panel pill rendered "${pill}"`);
 console.log(`panel pill: ok — ${pill}`);
 
 // Both stylesheets must be injected: losing the card sheet turns the speaker

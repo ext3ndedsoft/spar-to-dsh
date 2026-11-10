@@ -903,7 +903,7 @@ window.__ModuleLoader__.load({
 							jsx("span", { className: "mark", children: "◈" }),
 							jsxs("div", {
 								children: [
-									jsx("b", { children: "спор" }),
+									jsx("b", { children: "spar" }),
 									jsxs("div", {
 										className: "dots",
 										children: [
