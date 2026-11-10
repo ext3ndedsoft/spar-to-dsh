@@ -747,6 +747,63 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 32. a whole-file read is one call, and the trail says how much was covered
+{
+  const { dir, cleanup } = sandboxDir("whole");
+  const project = path.join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  const lines = Array.from({ length: 1200 }, (_, index) => `line ${index + 1}`).join("\n");
+  writeFileSync(path.join(project, "big.txt"), lines, "utf8");
+
+  const slice = __internals.runTool(project, "read", { path: "big.txt" });
+  includes(slice, "lines 1-200 of 1200", "a plain read still takes a slice");
+  const whole = __internals.runTool(project, "read", { path: "big.txt", whole: true });
+  includes(whole, "lines 1-1200 of 1200", "`whole` reads the file past the default slice");
+  cleanup();
+}
+
+// 33. losing the tools is announced, not silent
+{
+  const { dir, cleanup } = sandboxDir("budget");
+  let asked = false;
+  const scripted = () => {
+    if (!asked) {
+      asked = true;
+      return { toolCall: { id: "r1", name: "read", arguments: JSON.stringify({ path: "a.txt" }) } };
+    }
+    return "answering without tools";
+  };
+  writeFileSync(path.join(dir, "a.txt"), "hello\n", "utf8");
+  const { tool, calls } = makeHarness({ dir, text: scripted, config: { maxToolRounds: 1 } });
+  await tool.execute({ action: "open", topic: "t", async: false }, exec);
+
+  const finalCall = calls[calls.length - 1];
+  includes(
+    JSON.stringify(finalCall.messages ?? ""),
+    "Reading budget for this turn is spent",
+    "the model is told the budget is gone, so it cannot claim it looked",
+  );
+  cleanup();
+}
+
+// 34. the read trail records coverage, not just the path
+{
+  const { dir, cleanup } = sandboxDir("coverage");
+  writeFileSync(path.join(dir, "a.txt"), "hello\nworld\n", "utf8");
+  let asked = false;
+  const scripted = () => {
+    if (!asked) {
+      asked = true;
+      return { toolCall: { id: "r1", name: "read", arguments: JSON.stringify({ path: "a.txt" }) } };
+    }
+    return "done";
+  };
+  const { tool } = makeHarness({ dir, text: scripted, config: { maxToolRounds: 1 } });
+  const result = await tool.execute({ action: "open", topic: "t", async: false, cwd: dir }, exec);
+  includes(result.text, "a.txt (1-", "the trail says which lines were actually read");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

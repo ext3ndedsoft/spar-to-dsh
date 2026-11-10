@@ -47,7 +47,12 @@ export const inject = ["tools"];
 
 /** Per-turn ceiling on tool calls and on the bytes they drag into the transcript. */
 const MAX_TOOL_ROUNDS = 3;
-const MAX_TOOL_BYTES = 160 * 1024;
+/**
+ * A turn may pull this much text before the budget is spent. Bytes, not calls:
+ * one whole 3200-line file is a few calls' worth of tokens and a single
+ * round-trip, so counting calls punishes the efficient way of reading.
+ */
+const MAX_TOOL_BYTES = 512 * 1024;
 
 /** Route the chat card polls for the in-flight turn. */
 const LIVE_PATH = "/spar-live";
@@ -79,7 +84,7 @@ const DEFAULTS = {
   // caller's summary of it. Off makes every turn a closed-book answer.
   tools: true,
   cwd: "",
-  maxToolRounds: MAX_TOOL_ROUNDS,
+  maxToolRounds: 6,
   // A ruling on a thinking route spends most of its budget reasoning before it
   // writes anything, and the provider counts both against one cap. The budget is
   // sized so a full ruling fits after a full train of thought.
@@ -627,6 +632,10 @@ async function callModel(
   let finish;
   let toolRounds = 0;
   let toolBytes = 0;
+  let readBudgetAnnounced = false;
+  // A model that keeps asking for tools after the budget is gone must not spin
+  // the turn forever: two useless rounds and we answer with what we have.
+  let wastedRounds = 0;
   const started = Date.now();
   const usesTools = repo !== null && repo !== undefined && typeof repo.root === "string";
   try {
@@ -644,7 +653,23 @@ async function callModel(
         (controls) => controls,
       );
       finish = undefined;
-      const roundTools = usesTools && toolRounds < maxToolRounds ? TOOL_SCHEMAS : undefined;
+      const spent = toolRounds >= maxToolRounds;
+      if (spent && toolRounds > 0 && readBudgetAnnounced === false) {
+        // Losing the tools silently is worse than losing them loudly: a model that
+        // cannot look something up must not report "not found" as if it had looked.
+        readBudgetAnnounced = true;
+        messages.push({
+          id: nextMessageId(),
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Reading budget for this turn is spent (${toolRounds} tool calls, ${Math.round(toolBytes / 1024)} KB). Answer from what you did read, and say explicitly which files or questions you could not open.`,
+            },
+          ],
+        });
+      }
+      const roundTools = usesTools && !spent ? TOOL_SCHEMAS : undefined;
       const stream = call.stream({
         ...call.config,
         system,
@@ -682,6 +707,10 @@ async function callModel(
         source: { kind: "model", provider: route.provider, model: route.model },
       });
 
+      if (asked.length > 0 && toolRounds >= maxToolRounds) {
+        wastedRounds += 1;
+        if (wastedRounds >= 2) break;
+      }
       for (const askedCall of asked) {
         let body;
         if (toolRounds >= maxToolRounds) {
@@ -700,7 +729,16 @@ async function callModel(
           body = name === "" ? `error: unknown tool ${askedCall.name}` : runTool(repo.root, name, args);
           const subject =
             typeof args.path === "string" ? args.path : typeof args.pattern === "string" ? args.pattern : "";
-          onDelta?.({ text, step: { name, subject }, activity: subject === "" ? name : `${name} ${subject}` });
+          // A read that covered 200 of 3200 lines is not the same claim as one that
+          // covered the file. The trail says which, so the arbiter can weigh it and
+          // the caller can see whether a whole-file argument rests on a slice.
+          const covered = name === "read" ? /^\S+ · lines (\d+)-(\d+) of (\d+)$/m.exec(body) : null;
+          const span = covered === null ? "" : ` (${covered[1]}-${covered[2]}/${covered[3]})`;
+          onDelta?.({
+            text,
+            step: { name, subject: `${subject}${span}` },
+            activity: subject === "" ? name : `${name} ${subject}${span}`,
+          });
           toolBytes += body.length;
           if (toolBytes > MAX_TOOL_BYTES) body += "\n… this turn's reading budget is spent";
         }
@@ -1508,4 +1546,5 @@ export const __internals = {
   systemFor,
   readAttachments,
   JUDGE_SYSTEM,
+  runTool,
 };

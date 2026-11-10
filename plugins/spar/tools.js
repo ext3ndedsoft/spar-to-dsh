@@ -47,27 +47,31 @@ const SKIP_DIRS = new Set([
 	"vendor",
 ]);
 
-const MAX_READ_LINES = 900;
-const MAX_READ_BYTES = 24 * 1024;
+const MAX_READ_LINES = 20000;
+const MAX_READ_BYTES = 256 * 1024;
 const MAX_GREP_MATCHES = 140;
 const MAX_GREP_BYTES = 24 * 1024;
 const MAX_GLOB_RESULTS = 400;
 const MAX_GIT_BYTES = 32 * 1024;
 const MAX_WALK_FILES = 8000;
-const MAX_FILE_BYTES = 1024 * 1024;
+const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 /** Tools sent to the model, in the `llm` layer's schema shape. */
 export const TOOL_SCHEMAS = [
 	{
 		name: "read",
 		description:
-			"Read a slice of one file from the debate's repository, or list a directory when the path is a folder. Prefer a specific range around the code you are arguing about; long files are truncated. Returns numbered lines.",
+			"Read a slice of one file from the debate's repository, or list a directory when the path is a folder. Prefer a specific range around the code you are arguing about, or pass `whole` when the claim is about the file as a whole — arguing from one slice of a long file is how a confident wrong answer happens. Returns numbered lines and the range it covered out of the total.",
 		parameters: {
 			type: "object",
 			properties: {
 				path: { type: "string", description: "Repository-relative path." },
 				offset: { type: "number", description: "First line, 1-based. Defaults to 1." },
 				limit: { type: "number", description: `How many lines, up to ${MAX_READ_LINES}. Defaults to 200.` },
+				whole: {
+					type: "boolean",
+					description: `Read as much of the file as the ${Math.round(MAX_READ_BYTES / 1024)} KB ceiling allows, from the top. Use it when you need the whole file, not a slice.`,
+				},
 			},
 			required: ["path"],
 			additionalProperties: false,
@@ -196,8 +200,15 @@ function readRange(root, args) {
 	if (!info.isFile()) throw new Error(`${rel} is not a file`);
 	if (info.size > MAX_FILE_BYTES) throw new Error(`${rel} is ${Math.round(info.size / 1024)} KB — too large to read whole; use grep`);
 	const lines = readFileSync(absolute, "utf8").split("\n");
+	// A trailing newline is not a line: "of 3" for a two-line file misleads a model
+	// that is deciding whether it has seen the whole thing.
+	if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
 	const offset = Math.max(1, Math.trunc(Number(args.offset) || 1));
-	const limit = Math.min(MAX_READ_LINES, Math.max(1, Math.trunc(Number(args.limit) || 200)));
+	// `whole` exists because arguing about one slice of a 3200-line file is how a
+	// debate produces confident nonsense. The size ceiling still applies, but it is
+	// measured in bytes of text, not in an arbitrary number of lines.
+	const limit =
+		args.whole === true ? MAX_READ_LINES : Math.min(MAX_READ_LINES, Math.max(1, Math.trunc(Number(args.limit) || 200)));
 	const slice = lines.slice(offset - 1, offset - 1 + limit);
 	let body = "";
 	let used = 0;

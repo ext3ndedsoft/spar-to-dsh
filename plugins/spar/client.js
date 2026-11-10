@@ -724,12 +724,12 @@ window.__ModuleLoader__.load({
 .spp .sw{display:flex;align-items:center;gap:8px;justify-content:space-between;
 	padding:6px 9px;border-radius:9px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03)}
 .spp .sw span{font-size:11.5px}
-.spp .sw button{width:34px;height:19px;border-radius:99px;border:1px solid rgba(255,255,255,.14);
-	background:rgba(255,255,255,.08);position:relative;transition:.18s}
-.spp .sw button i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:99px;background:#6b6b78;transition:.18s}
+.spp .sw button{width:36px;height:20px;box-sizing:border-box;border-radius:99px;border:1px solid rgba(255,255,255,.14);
+	background:rgba(255,255,255,.08);position:relative;padding:0;cursor:pointer;transition:background .18s,border-color .18s}
+.spp .sw button i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:99px;background:#6b6b78;transition:left .18s,background .18s}
 .spp .sw button[data-on="1"]{background:linear-gradient(135deg,rgba(139,92,246,.55),rgba(34,211,238,.45));
 	border-color:rgba(167,139,250,.55)}
-.spp .sw button[data-on="1"] i{left:16px;background:#ececf1}
+.spp .sw button[data-on="1"] i{left:18px;background:#ececf1}
 .spp .two{display:flex;gap:8px}
 .spp .two > div{flex:1}
 .spp .foot{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;
