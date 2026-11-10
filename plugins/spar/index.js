@@ -176,6 +176,21 @@ function resolveRoute(spec, config) {
   if (alias !== undefined) return { provider: alias.provider, model: alias.model, label: `${alias.provider}/${alias.model}` };
 
   const pair = pairOf(text);
+  // `Gemini` is a family, not an id. When the caller names a family the configured
+  // opponent already belongs to, the profile wins: nobody should have to know that
+  // this machine calls it `antigravity/gemini-3.8-flash` rather than
+  // `google/gemini-2.5-pro`, and a debate must start, not stop at a lookup.
+  const family = text.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (family !== "" && (pair === undefined || !pair.model.toLowerCase().includes(family))) {
+    for (const spec of [config.defaultOpponent, config.challenger, config.judge]) {
+      if (typeof spec !== "string") continue;
+      const known = pairOf(spec);
+      if (known === undefined) continue;
+      if (known.model.toLowerCase().includes(family) || known.provider.toLowerCase().includes(family)) {
+        return { provider: known.provider, model: known.model, label: `${known.provider}/${known.model}` };
+      }
+    }
+  }
   if (pair !== undefined) return { ...pair, label: `${pair.provider}/${pair.model}` };
 
   const known = Object.keys(config.opponents ?? {}).sort().join(", ");
@@ -703,7 +718,7 @@ async function callModel(
       // the project, and one that opened nothing did not.
       const offered = schemas ?? TOOL_SCHEMAS;
       const allowed = allowedToolNames ?? ALLOWED_TOOL_NAMES;
-      const roundTools = usesTools && !spent ? offered : undefined;
+      const roundTools = usesTools && !spent && offered.length > 0 ? offered : undefined;
       const stream = call.stream({
         ...call.config,
         system,
@@ -896,7 +911,9 @@ const DESCRIPTION = [
   "",
   "The other side is not limited to your summary: it can read the project itself (`read`/`grep`/`glob`/`git`, scoped to `cwd`), and every turn reports what it actually read.",
   "",
-  "Models are optional. `open` with only a `topic` uses the profile's opponent and judge — that is the normal case, because the profile already names them. Pass `opponent`/`judge` only when the user asked for a specific model by name, and never invent one: `models` lists the valid ids, `list` shows what is already configured.",
+  "Models are optional and the profile wins. `open` with only a `topic` uses the profile's opponent and judge — that is the normal case, because the profile already names them. If the user says \"Gemini\" or \"Claude\", that already *is* the configured opponent: do not look it up, do not pass an id, start the debate. Pass `opponent`/`judge` only for an exact `provider/model` the user typed; never invent a model id, and do not browse the catalog before arguing.",
+  "",
+  "Web search is the caller's call, not a default: pass `web: true` only when the user asked to use the internet, and both sides may then search. Otherwise they will not, and an opinion debate stays an opinion debate.",
   "",
   "Actions:",
   "- open   — { topic, opponent?, mode?, intensity?, stance?, files?, opening? } → new id + the other side's opening. `opening:\"me\"` starts silent so you speak first.",
@@ -1194,6 +1211,9 @@ export function apply(ctx, rawConfig = {}) {
       phase: options.phase ?? "reply",
       route: route.label,
       topic: debate.topic,
+      // The card shows this above the reply: the caller argued too, and a card with
+      // only the opponent's text reads as if the argument was never made.
+      mine: typeof options.mine === "string" ? options.mine.slice(0, TURN_SHOWN_CHARS) : "",
     });
     try {
       const reply = await callModel(ctx, route, systemFor(debate, side, config), prompt, {
@@ -1413,7 +1433,7 @@ export function apply(ctx, rawConfig = {}) {
         return start(id, debate.right, "reply", () =>
           guard(id, async () => {
             debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString() });
-            const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
+            const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, mine: message, repo: repoOf(debate) });
             // The caller's own words are part of the record and must be part of what
             // comes back: the card showed only the reply, so its own argument looked
             // missing even though the transcript had it.
@@ -1564,7 +1584,10 @@ export function apply(ctx, rawConfig = {}) {
               // The arbiter verifies; the debater argues. One reading budget for both
               // meant the judge ran out while checking a claim it had already quoted.
               maxToolRounds: positiveInt(config.judgeToolRounds, 8),
-              schemas: judgeSchemas,
+              // An empty list is a real answer here ("this debate needs no tools"), and
+      // callModel drops it before the request: a provider rejects `tools: []` as
+      // malformed, which is how the verdict card died on its first call.
+      schemas: judgeSchemas,
               allowedToolNames: judgeAllowed,
               signal,
               repo: judgeRepo,

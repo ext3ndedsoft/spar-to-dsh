@@ -201,6 +201,18 @@ window.__ModuleLoader__.load({
 	-webkit-mask-image: linear-gradient(180deg, #000 66%, transparent);
 	mask-image: linear-gradient(180deg, #000 66%, transparent);
 }
+[data-spar-mine] {
+	color: #8ea0b5;
+	border-left: 2px solid #2f3a48;
+	padding-left: 10px;
+	margin: 0 0 8px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
 [data-spar-quiet] {
 	font-size: 12.5px;
 	color: var(--dsw-alias-label-tertiary, #8a8a8a);
@@ -534,7 +546,7 @@ window.__ModuleLoader__.load({
 								jsx("span", { "data-spar-badge": "", children: "◈" }),
 								jsx("span", {
 									"data-spar-name": "",
-									children: modelOf(live?.route) || "вторая модель",
+									children: live?.phase === "verdict" ? "судья" : modelOf(live?.route) || "вторая модель",
 								}),
 								jsx("span", {
 									"data-spar-tag": "",
@@ -554,6 +566,11 @@ window.__ModuleLoader__.load({
 						jsxs("div", {
 							"data-spar-stream": "",
 							children: [
+								// The caller's own turn, above the reply. Without it the card looks
+								// like a monologue and the reader cannot tell what was answered.
+								live === null || typeof live.mine !== "string" || live.mine === ""
+									? null
+									: jsx("div", { "data-spar-mine": "", children: live.mine }),
 								steps.length === 0
 									? null
 									: jsx("div", {
@@ -579,7 +596,7 @@ window.__ModuleLoader__.load({
 									? null
 									: jsx("div", { "data-spar-reason": "", children: reasoning }),
 								text === "" ? null : jsx(Body, { text: smooth }),
-								text === "" && reasoning === "" && steps.length === 0 && live?.stalled !== true
+								text === "" && reasoning === "" && steps.length === 0 && live?.stalled !== true && live?.mine !== null
 									? jsx("div", { "data-spar-quiet": "", children: "думает…" })
 									: null,
 							],

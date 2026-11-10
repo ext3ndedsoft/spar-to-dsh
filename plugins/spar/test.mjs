@@ -1102,7 +1102,7 @@ const exec = { signal: undefined };
   const idMatch = /\[spar (d\d+)/.exec(opened.text);
   if (idMatch === null) throw new Error(`no debate id in ${opened.text.slice(0, 120)}`);
   calls.length = 0;
-  await tool.execute({ action: "verdict", id: idMatch[1], async: false }, exec);
+  await tool.execute({ action: "verdict", id: idMatch[1], project: false, async: false }, exec);
   const judgeTools = JSON.stringify(calls[0]?.tools ?? []);
   if (judgeTools.includes('"name":"read"')) throw new Error("the judge was offered repo tools for a phone argument");
   if (judgeTools.includes('"name":"web"')) throw new Error(`an opinion debate got a search box: ${judgeTools}`);
@@ -1126,6 +1126,16 @@ const exec = { signal: undefined };
   calls.length = 0;
   await tool.execute({ action: "verdict", id: "d1", project: true, async: false }, exec);
   includes(JSON.stringify(calls[0].messages), "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", "the judge is given the caller's argument too");
+  cleanup();
+}
+
+// 53. a family name resolves to the configured model, not to a lookup
+{
+  const { dir, cleanup } = sandboxDir("family");
+  const { tool, calls } = makeHarness({ dir, config: { defaultOpponent: "antigravity/gemini-3.8-flash", challenger: "antigravity/gemini-3.8-flash-tiered" } });
+  const result = await tool.execute({ action: "open", topic: "t", opponent: "gemini", cwd: dir, async: false }, exec);
+  if (/неизвестная модель/.test(result.text)) throw new Error("a family name must resolve through the profile");
+  includes(JSON.stringify(calls[0]?.model ?? ""), "gemini", "the configured gemini is the one that answers");
   cleanup();
 }
 
