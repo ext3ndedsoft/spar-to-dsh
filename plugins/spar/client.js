@@ -201,6 +201,8 @@ window.__ModuleLoader__.load({
 	-webkit-mask-image: linear-gradient(180deg, #000 66%, transparent);
 	mask-image: linear-gradient(180deg, #000 66%, transparent);
 }
+[data-spar-card][data-state="past"] { opacity: 0.62; padding: 8px 12px; cursor: pointer; }
+[data-spar-card][data-state="past"]:hover { opacity: 0.85; }
 [data-spar-mine] {
 	color: #8ea0b5;
 	border-left: 2px solid #2f3a48;
@@ -468,7 +470,7 @@ window.__ModuleLoader__.load({
 							if (stopped) return;
 							if (value !== null && value.missing !== true) {
 								misses = 0;
-								setState({ ...value, stalled: false });
+								setState({ ...value, known: true, stalled: false });
 								if (value.done !== true) schedule(LIVE_MS);
 							} else {
 								// The registry does not know this call. That is normal for a
@@ -480,14 +482,14 @@ window.__ModuleLoader__.load({
 								// a turn that had not started writing yet, which is where "нет
 								// ответа от реестра" at the beginning came from.
 								const waited = Date.now() - startedAt;
-								setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER && waited > STALL_FLOOR_MS }));
+								setState((previous) => ({ ...(previous ?? {}), known: false, stalled: misses >= STALL_AFTER && waited > STALL_FLOOR_MS }));
 								schedule(LIVE_MS * 2);
 							}
 						})
 						.catch(() => {
 							if (stopped) return;
 							misses += 1;
-							setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER && Date.now() - startedAt > STALL_FLOOR_MS }));
+							setState((previous) => ({ ...(previous ?? {}), known: false, stalled: misses >= STALL_AFTER && Date.now() - startedAt > STALL_FLOOR_MS }));
 							schedule(LIVE_MS * 2);
 						});
 				};
@@ -506,6 +508,16 @@ window.__ModuleLoader__.load({
 			return text.slice(text.lastIndexOf("/") + 1);
 		}
 
+		/** Who is on the mic, in words. A model id is not a stage. */
+		function stageName(entry) {
+			if (entry === null || entry === undefined) return "спор";
+			if (entry.phase === "verdict") return "судья";
+			if (entry.phase === "duel") return "дуэль";
+			if (entry.role === "right") return "B отвечает";
+			if (entry.role === "left") return "A отвечает";
+			return modelOf(entry.route) || "спор";
+		}
+
 		function Card({ props }) {
 			const [open, setOpen] = React.useState(true);
 			const [expanded, setExpanded] = React.useState(false);
@@ -513,16 +525,41 @@ window.__ModuleLoader__.load({
 			const started = raw.includes("· started]");
 			const running = props.phase === "preparing" || props.phase === "start";
 			const live = useLiveTurn(props.callId, running || started);
+			// Which card is the live one for this debate? A spawn card that has been
+			// overtaken by a later call is a finished phase, and printing it in full is
+			// the parade of identical "вторая модель" panels. It collapses to one line;
+			// the newest card carries the content.
+			const debateId = (/\[spar (d\d+)/.exec(raw) ?? [])[1] ?? "";
+			const [newest, setNewest] = React.useState(null);
+			React.useEffect(() => {
+				if (!started || debateId === "") return undefined;
+				let alive = true;
+				fetch(`/spar-live?debate=${encodeURIComponent(debateId)}`, { cache: "no-store" })
+					.then((response) => (response.ok ? response.json() : null))
+					.then((value) => {
+						if (alive && value !== null && value.newest !== null && value.newest !== undefined) setNewest(value.newest);
+					})
+					.catch(() => {});
+				return () => {
+					alive = false;
+				};
+			}, [debateId, started]);
+			const superseded =
+				started === true &&
+				typeof props.callId === "string" &&
+				newest !== null &&
+				typeof newest.callId === "string" &&
+				newest.callId !== props.callId;
 			// The registry knows more than the tool-call prop: it has the real text and the
 			// real end. A finished turn must not be painted as running, and a turn whose
 			// first poll is still in flight must not be painted as finished.
-			const liveKnown = live !== null && live !== undefined;
+			// `known` is the field that decides everything. A missing entry used to leave
+			// `{stalled:false}` in state — an object, not null — so `liveKnown` was true,
+			// `liveDone` false, and every card whose call the registry did not know
+			// painted itself as "пишет · думает…". That is where the ghost cards came
+			// from: not a running turn, an absent one.
+			const liveKnown = live !== null && live !== undefined && live.known === true;
 			const liveDone = liveKnown && live.done === true;
-			// Only the registry may animate a card. The host prop says "started" forever
-			// for an async call — its text never changes after the tool returns — so a
-			// missing registry entry used to mean an endless "пишет" per tool call, and
-			// a debate showed four of them at once. No entry: show the static text, and
-			// the recovery line appears only after a real timeout.
 			const working = liveKnown && !liveDone;
 			const streaming = working;
 			const smooth = useSmoothText(live?.text ?? "", streaming);
@@ -546,7 +583,7 @@ window.__ModuleLoader__.load({
 								jsx("span", { "data-spar-badge": "", children: "◈" }),
 								jsx("span", {
 									"data-spar-name": "",
-									children: live?.phase === "verdict" ? "судья" : modelOf(live?.route) || "вторая модель",
+									children: stageName(live),
 								}),
 								jsx("span", {
 									"data-spar-tag": "",
@@ -624,6 +661,29 @@ window.__ModuleLoader__.load({
 			const failed = props.block?.isError === true;
 			const info = parse(props.block);
 
+			// A phase that the debate has moved past: one line, no prose. The turn is
+			// in the record and in whatever card came next; repeating it here is what
+			// made the chat look like four models talking at once.
+			if (superseded && !expanded) {
+				return jsxs("div", {
+					"data-spar-card": "",
+					"data-state": "past",
+					"data-tool": "spar",
+					onClick: () => setExpanded(true),
+					children: [
+						jsxs("div", {
+							"data-spar-head": "",
+							children: [
+								jsx("span", { "data-spar-badge": "", children: "·" }),
+								jsx("span", { "data-spar-name": "", children: `${debateId} · этап пройден` }),
+								jsx("span", { "data-spar-tag": "", children: stageName(newest) }),
+								jsx("span", { "data-spar-meta": "", children: "показать" }),
+							],
+						}),
+					],
+				});
+			}
+
 			// An async turn settled: the result is only an acknowledgement, so the
 			// text comes from the polled state instead.
 			if (started && live !== null && live.done === true) {
@@ -638,7 +698,7 @@ window.__ModuleLoader__.load({
 							"data-spar-head": "",
 							children: [
 								jsx("span", { "data-spar-badge": "", children: live.error ? "!" : "◈" }),
-								jsx("span", { "data-spar-name": "", children: modelOf(live.route) || "вторая модель" }),
+								jsx("span", { "data-spar-name": "", children: stageName(live) }),
 								jsx("span", {
 									"data-spar-tag": "",
 									children: live.error ? "не ответила" : verdict ? "приговор" : "возражение",
@@ -696,7 +756,7 @@ window.__ModuleLoader__.load({
 							jsx("span", { "data-spar-badge": "", children: failed ? "!" : "◈" }),
 							jsx("span", {
 								"data-spar-name": "",
-								children: info.model === "" ? "вторая модель" : info.model,
+								children: info.tag === "приговор" ? "судья" : info.tag === "каталог" || info.tag === "список" ? "spar" : "B отвечает",
 							}),
 							jsx("span", { "data-spar-tag": "", children: failed ? "не ответила" : info.tag }),
 							info.ms === null

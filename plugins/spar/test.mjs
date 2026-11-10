@@ -1139,6 +1139,29 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 54. a verdict waits for a turn that is still being written
+{
+  const { dir, cleanup } = sandboxDir("verdictwait");
+  writeFileSync(path.join(dir, "a.txt"), "x\n", "utf8");
+  const { tool, calls } = makeHarness({ dir, text: () => "аргумент стороны", config: { verdictWaitMs: 1200 } });
+  await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
+  // Pretend a turn is in flight: the verdict must not judge half a transcript.
+  const store = path.join(dir, "store");
+  const file = path.join(dir, "d1.json");
+  const debate = JSON.parse(readFileSync(file, "utf8"));
+  debate.pending = { phase: "reply", route: "x/y", at: new Date().toISOString() };
+  writeFileSync(file, JSON.stringify(debate), "utf8");
+  calls.length = 0;
+  let complained = "";
+  try {
+    await tool.execute({ action: "verdict", id: "d1", project: true, async: false }, exec);
+  } catch (error) {
+    complained = String(error?.message ?? error);
+  }
+  includes(complained, "still being written", "a half-written turn is refused instead of judged");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

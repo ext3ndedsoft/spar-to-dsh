@@ -40,6 +40,7 @@ export function createLiveRegistry() {
       const state = {
         call: callId,
         id: meta.id ?? null,
+        debateId: meta.id ?? null,
         role: meta.role ?? null,
         phase: meta.phase ?? null,
         route: meta.route ?? null,
@@ -85,6 +86,28 @@ export function createLiveRegistry() {
       if (typeof patch.text === "string" && patch.text !== "") state.text = patch.text;
       if (typeof patch.error === "string" && patch.error !== "") state.error = patch.error;
       state.activity = null;
+      // A turn that ends closes every older turn of the same debate: the previous
+      // phase is over by definition, and an entry left "not done" would keep a card
+      // animating beside the finished one. This is the cascade the card model needs
+      // and the one it did not have.
+      for (const [otherId, other] of runs) {
+        if (otherId === callId || other.done === true) continue;
+        if (other.debateId !== state.debateId) continue;
+        other.done = true;
+        other.settledAt = Date.now();
+        other.activity = null;
+        if (other.text === "") other.text = "";
+      }
+    },
+    /** The most recent call for a debate, so a card can know it was superseded. */
+    newestFor(debateId) {
+      prune();
+      let best = null;
+      for (const [callId, state] of runs) {
+        if (state.debateId !== debateId) continue;
+        if (best === null || state.at > best.at) best = { callId, at: state.at, phase: state.phase, role: state.role, done: state.done === true };
+      }
+      return best;
     },
     /** One snapshot for a card, or null when the call is unknown. */
     read(callId) {
@@ -156,6 +179,14 @@ export function liveHandler(registry) {
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     const callId = url.searchParams.get("call") ?? "";
+    const debateId = url.searchParams.get("debate") ?? "";
+    // A card can be superseded by a later call of the same debate; it asks who is
+    // newest so a finished phase collapses instead of competing with the next one.
+    if (debateId !== "") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify({ newest: registry.newestFor(debateId) }));
+      return;
+    }
     // No call id: hand back the newest running turn. That is what a developer
     // (or a lost card) wants, and it keeps the route useful without the id.
     const newest = callId === "" ? registry.newest() : null;

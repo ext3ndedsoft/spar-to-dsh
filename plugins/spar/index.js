@@ -687,11 +687,14 @@ async function callModel(
     // allowed to think is a worse one, not a cheaper one.
     const messages = [{ role: "user", content: [{ type: "text", text: prompt }] }];
 
+    let budget = maxTokens;
+    let retriedForCeiling = false;
+
     for (;;) {
       // A prepared call dispatches once, so every round — including the ones a
       // tool result triggers — gets its own preparation.
       const call = await llm.prepareCall(
-        { provider: route.provider, model: route.model, maxTokens, temperature },
+        { provider: route.provider, model: route.model, maxTokens: budget, temperature },
         controller.signal,
         (controls) => controls,
       );
@@ -753,6 +756,25 @@ async function callModel(
         }
       }
       text += roundText;
+      // A reasoning model can spend the whole ceiling thinking and return nothing.
+      // Reporting that as a failure is wrong: the turn did not fail, it ran out of
+      // room. One retry with double the room and an explicit instruction is what a
+      // person would do; a second failure is then real.
+      if (finish?.kind === "max-tokens" && text.trim() === "" && !retriedForCeiling && budget < 32768) {
+        retriedForCeiling = true;
+        budget = Math.min(32768, budget * 2);
+        messages.push({
+          id: nextMessageId(),
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "You reached the token ceiling while thinking and produced no reply. Answer now, in the space you have: the substance, nothing else.",
+            },
+          ],
+        });
+        continue;
+      }
       if (!usesTools || finish?.kind !== "tool-calls" || asked.length === 0) break;
 
       const blocks = [];
@@ -1529,6 +1551,25 @@ export function apply(ctx, rawConfig = {}) {
         const id = typeof args?.id === "string" ? args.id.trim() : "";
         if (id === "") throw new Error('spar verdict: "id" is required');
         const debate = loadDebate(config, id);
+        // Asking for a verdict while a turn is still being written judges a
+        // half-transcript: the missing side then reads as "did not argue" and the
+        // arbiter has to blame it. Wait for the turn, briefly, then proceed.
+        if (debate.pending !== null && debate.pending !== undefined) {
+          const deadline = Date.now() + Math.max(2_000, Number(config.verdictWaitMs) || 30_000);
+          while (Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const current = loadDebate(config, id);
+            if (current.pending === null || current.pending === undefined) {
+              debate.turns = current.turns;
+              break;
+            }
+          }
+          if (debate.pending !== null && debate.pending !== undefined) {
+            throw new Error(
+              `spar verdict: the ${debate.pending.phase ?? "current"} turn from ${debate.pending.route ?? "the opponent"} is still being written. Read it with action:"result" first.`,
+            );
+          }
+        }
         const judge = judgeRoute(args?.judge, config, exec);
         const conflict =
           debate.kind === "duel"
