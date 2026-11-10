@@ -1369,7 +1369,11 @@ export function apply(ctx, rawConfig = {}) {
           guard(id, async () => {
             debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString() });
             const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
-            return { text: `${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}` };
+            // The caller's own words are part of the record and must be part of what
+            // comes back: the card showed only the reply, so its own argument looked
+            // missing even though the transcript had it.
+            const mine = message.length > TURN_SHOWN_CHARS ? `${message.slice(0, TURN_SHOWN_CHARS)}\n… (${message.length - TURN_SHOWN_CHARS} characters cut)` : message;
+            return { text: `A (ты) — твой аргумент:\n${mine}\n\n${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}` };
           }),
         );
       }
@@ -1581,8 +1585,21 @@ export function apply(ctx, rawConfig = {}) {
           return { text: `[spar ${id} · result]\nNothing has been written yet — the turn never started.` };
         }
         const route = last.role === "judge" ? judgeRoute(args?.judge, config, exec) : debate.right;
+        // The caller's own turn is half the exchange. Printing only the reply made
+        // the argument look lost even though the transcript had it, and the reader
+        // could not check whether the reply answered what was actually said.
+        const index = debate.turns.indexOf(last);
+        const mine = index > 0 ? debate.turns[index - 1] : undefined;
+        const own =
+          mine !== undefined && mine.role === "left" && typeof mine.text === "string" && mine.text.trim() !== ""
+            ? `A (ты) — твой аргумент:\n${
+                mine.text.length > TURN_SHOWN_CHARS
+                  ? `${mine.text.slice(0, TURN_SHOWN_CHARS)}\n… (${mine.text.length - TURN_SHOWN_CHARS} characters cut)`
+                  : mine.text
+              }\n\n`
+            : "";
         return {
-          text: `${resultHeader(debate, last, route)}\n${clip(last.text)}${usedLine(last)}`,
+          text: `${own}${resultHeader(debate, last, route)}\n${clip(last.text)}${usedLine(last)}`,
         };
       }
 

@@ -399,7 +399,9 @@ window.__ModuleLoader__.load({
 
 		const LIVE_MS = 320;
 		/** Consecutive empty polls before a running card admits it lost the host. */
-		const STALL_AFTER = 12;
+		const STALL_AFTER = 40;
+		/** Nothing is declared dead inside the first minute: a cold gateway is slow. */
+		const STALL_FLOOR_MS = 60_000;
 
 		/**
 		 * Reveal the arriving text a frame at a time instead of in the chunks the
@@ -438,6 +440,7 @@ window.__ModuleLoader__.load({
 				let stopped = false;
 				let timer;
 				let misses = 0;
+				const startedAt = Date.now();
 				const tick = () => {
 					fetch(`/spar-live?call=${encodeURIComponent(callId)}`, { cache: "no-store" })
 						.then((response) => (response.ok ? response.json() : null))
@@ -452,16 +455,19 @@ window.__ModuleLoader__.load({
 								// moment after the turn starts, and suspicious after a while: a
 								// dead process would otherwise animate "пишет…" forever.
 								misses += 1;
-								// Even before any state arrived: a process that died mid-turn must
-								// surface as a stall, not as an endless "пишет…".
-								setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER }));
+								// A cold first call can take ten seconds before the host registers anything:
+// twelve polls of 640 ms declared a stall on a turn that had not started writing
+// yet, which is where "нет ответа от реестра" at the beginning came from.
+								const waited = Date.now() - startedAt;
+								setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER && waited > STALL_FLOOR_MS }));
+								timer = setTimeout(tick, LIVE_MS * 2);
 								timer = setTimeout(tick, LIVE_MS * 2);
 							}
 						})
 						.catch(() => {
 							if (stopped) return;
 							misses += 1;
-							setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER }));
+							setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER && Date.now() - startedAt > STALL_FLOOR_MS }));
 							timer = setTimeout(tick, LIVE_MS * 2);
 						});
 				};

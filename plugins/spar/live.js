@@ -12,7 +12,7 @@
 
 const KEEP_MS = 10 * 60 * 1000;
 /** A turn that has not touched its entry for this long is not writing any more. */
-const IDLE_MS = 4 * 60 * 1000;
+const IDLE_MS = 8 * 60 * 1000;
 const MAX_REASONING_CHARS = 4000;
 const MAX_STEPS = 16;
 
@@ -93,8 +93,12 @@ export function createLiveRegistry() {
       // A process can die after `begin` and before `settle`. Its entry then says
       // "not done" forever, and the card keeps animating a turn that is not being
       // written. Silence past the idle window is reported as a stall, not as motion.
-      const idle = state.done !== true && Date.now() - state.at > IDLE_MS;
-      if (idle) state.stalled = true;
+      //
+      // Computed per read, never latched: a finished turn that once went quiet for
+      // four minutes used to keep `stalled: true` forever, and the card then showed
+      // "no answer from the registry" over a reply that was right there. A long turn
+      // that pauses — a slow first token, a tool round — must not become a corpse.
+      const stalled = state.done !== true && Date.now() - state.at > IDLE_MS;
       return {
         call: state.call,
         id: state.id,
@@ -108,7 +112,7 @@ export function createLiveRegistry() {
         reasoning: state.reasoning,
         steps: state.steps,
         done: state.done,
-        stalled: state.stalled === true,
+        stalled,
         error: state.error,
       };
     },

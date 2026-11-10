@@ -895,12 +895,19 @@ const exec = { signal: undefined };
   const registry = createLiveRegistry();
   const state = registry.begin("c1", { id: "d1", role: "reply", route: "p/m", phase: "replying" });
   if (state === undefined) throw new Error("begin returned nothing");
-  state.at = Date.now() - 5 * 60 * 1000;
+  state.at = Date.now() - 9 * 60 * 1000;
   const read = registry.read("c1");
   if (read.stalled !== true) throw new Error("a silent run was not marked stalled");
   if (read.done === true) throw new Error("a silent run must not claim to be done");
   eq(registry.active().length, 0, "a silent run is not listed as active");
   eq(registry.newest(), null, "and is not served as the newest live turn");
+  // A pause shorter than the idle window is not a corpse: a turn that takes five
+  // minutes between tokens used to be declared dead and stayed dead.
+  const slow = registry.begin("c2", { id: "d2", role: "reply", route: "p/m", phase: "replying" });
+  slow.at = Date.now() - 5 * 60 * 1000;
+  eq(registry.read("c2").stalled, false, "five quiet minutes are still motion");
+  registry.settle("c1", { text: "done" });
+  eq(registry.read("c1").stalled, false, "a settled turn is never stalled, even after silence");
 }
 
 // 41. a tool call without an id still gets a paired id (Anthropic rejects the rest)
@@ -1098,6 +1105,22 @@ const exec = { signal: undefined };
   const judgeTools = JSON.stringify(calls[0]?.tools ?? []);
   if (judgeTools.includes('"name":"read"')) throw new Error("the judge was offered repo tools for a phone argument");
   includes(judgeTools, '"name":"web"', "but it keeps the web");
+  cleanup();
+}
+
+// 52. the caller's own argument comes back with the reply, and reaches the judge
+{
+  const { dir, cleanup } = sandboxDir("ownturn");
+  writeFileSync(path.join(dir, "a.txt"), "x\n", "utf8");
+  const { tool, calls } = makeHarness({ dir });
+  await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
+  await tool.execute({ action: "say", id: "d1", message: "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", async: false }, exec);
+  const back = await tool.execute({ action: "result", id: "d1", async: false }, exec);
+  includes(back.text, "твой аргумент", "the result names the caller's own turn");
+  includes(back.text, "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", "and prints it, not only the reply");
+  calls.length = 0;
+  await tool.execute({ action: "verdict", id: "d1", project: true, async: false }, exec);
+  includes(JSON.stringify(calls[0].messages), "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", "the judge is given the caller's argument too");
   cleanup();
 }
 
