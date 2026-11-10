@@ -495,6 +495,7 @@ function systemFor(debate, side, config) {
     "- When the debate is not about the project you get no repo tools, and that is normal — argue from what is in front of you. Searching the web is off unless this debate asked for it; an opinion about tea and coffee is not a research task.",
     `- This turn allows ${String(config.maxToolRounds)} tool calls and about ${String(Math.round(MAX_TOOL_BYTES / 1024))} KB of file text. Plan the reads to fit: a whole file counts as one call, and if the answer needs more than the budget, say which part you could not open.`,
     "- If you could not read something you needed, say which part and why. Never infer what unread code probably does and present it as a finding.",
+    "- A tool may fail. That is information, not the end of your turn: retry once with different arguments, try another route, or answer with what you have and name what you could not check. Never dress an unchecked claim as a verified one.",
     "- 150-350 words. Prose only: no headings, no bullet lists longer than three items, no summary paragraphs.",
     "- Answer in the language the exchange is written in; keep code, identifiers, and quoted text unchanged.",
     languageLine(config),
@@ -503,7 +504,7 @@ function systemFor(debate, side, config) {
   ];
   if (debate.web === true) {
     rules.push(
-      "- This debate asked for sources: `web` with `query` searches and `url` reads one page. Use it for the one factual claim that decides the exchange, cite the link, and stop there — researching a topic is not arguing.",
+      "- This debate asked for sources: `web` with `query` searches and `url` reads one page. Use it for the one factual claim that decides the exchange, cite the link, and stop there — researching a topic is not arguing. A search does not count against your reading budget; it is gathering, not an argument. You get at most six fetches and about 45 seconds of network time per turn, so spend them on the claim that decides it.",
     );
   }
   if (debate.stance !== "") rules.push("", `The position under dispute, as the opponent framed it: ${debate.stance}`);
@@ -637,6 +638,25 @@ function repoFor(config, exec) {
 }
 
 /**
+ * Run one tool call without letting it end the turn.
+ *
+ * A tool that throws — a network failure in `web`, an unreadable path, anything
+ * unforeseen — must come back to the model as a tool result it can react to:
+ * retry, try another route, or say plainly that it could not check. A model that
+ * cannot fall is a model that either lies about what it saw or dies mid-sentence,
+ * and both happened: a judge fetched a URL, `fetch failed`, and the verdict card
+ * closed with an error instead of a verdict.
+ */
+async function attemptTool(name, args, root, options) {
+  try {
+    return name === "web" ? await webRun(args, options?.timeoutMs) : runTool(root, name, args);
+  } catch (error) {
+    const reason = typeof error?.message === "string" && error.message !== "" ? error.message : String(error);
+    return `error: the ${name} tool failed — ${reason}\nThis is not the end of your turn: you may call another tool, retry with different arguments, or answer with what you have and say what you could not check.`;
+  }
+}
+
+/**
  * Stream one model reply and return its text.
  *
  * When `repo` is given, the model may read the project itself: every tool call
@@ -675,6 +695,17 @@ async function callModel(
   let finish;
   let toolRounds = 0;
   let toolBytes = 0;
+  // A search gathers material; it is not an argument. Spending the reading budget
+  // on it made a debater choose between looking something up and answering, which
+  // is the wrong trade — so web calls have their own ceiling and do not consume
+  // the rounds that a `read` would.
+  let webRounds = 0;
+  const MAX_WEB_ROUNDS = 6;
+  /** Wall clock a turn may spend fetching. web is gathering, not arguing. */
+  const WEB_TURN_MS = 45_000;
+  let webStartedAt = 0;
+  let webBytes = 0;
+  const MAX_WEB_BYTES = 200 * 1024;
   let readBudgetAnnounced = false;
   // A model that keeps asking for tools after the budget is gone must not spin
   // the turn forever: two useless rounds and we answer with what we have.
@@ -804,7 +835,6 @@ async function callModel(
         if (spent) {
           body = "error: this turn's tool budget is spent — answer with what you have";
         } else {
-          toolRounds += 1;
           let args = {};
           let parseFailed = false;
           try {
@@ -816,14 +846,28 @@ async function callModel(
             args = {};
           }
           const name = allowed.has(askedCall.name) ? askedCall.name : "";
-          body = parseFailed
-            ? // Silent `{}` used to turn a malformed call into "the file is not there".
-              "error: the tool arguments were not valid JSON — repeat the call with a JSON object"
-            : name === ""
-              ? `error: unknown tool ${askedCall.name}`
-              : name === "web"
-                ? await webRun(args)
-                : runTool(repo.root, name, args);
+          if (name === "web") webRounds += 1;
+          else if (name !== "") toolRounds += 1;
+          if (parseFailed) {
+            // Silent `{}` used to turn a malformed call into "the file is not there".
+            body = "error: the tool arguments were not valid JSON — repeat the call with a JSON object";
+          } else if (name === "") {
+            body = `error: unknown tool ${askedCall.name}`;
+          } else if (name === "web") {
+            // Web gets its own two ceilings — calls and wall clock — because its
+            // cost is not the transcript, it is time: six slow fetches can eat the
+            // turn deadline and the model never gets to answer.
+            if (webStartedAt === 0) webStartedAt = Date.now();
+            const left = WEB_TURN_MS - (Date.now() - webStartedAt);
+            body =
+              webRounds > MAX_WEB_ROUNDS
+                ? `error: the web budget for this turn is spent (${MAX_WEB_ROUNDS} calls) — answer with what you have`
+                : left <= 3000
+                  ? `error: the web budget for this turn is spent (${Math.round(WEB_TURN_MS / 1000)}s of fetching) — answer with what you have`
+                  : await attemptTool(name, args, repo.root, { timeoutMs: Math.min(left, 20_000) });
+          } else {
+            body = await attemptTool(name, args, repo.root);
+          }
           const subject =
             typeof args.path === "string"
               ? args.path
@@ -845,8 +889,16 @@ async function callModel(
             step: { name, subject: `${subject}${span}` },
             activity: subject === "" ? name : `${name} ${subject}${span}`,
           });
-          toolBytes += body.length;
-          if (toolBytes > MAX_TOOL_BYTES) body += "\n… this turn's reading budget is spent";
+          // Only project text spends the reading budget. A 300 KB page is not a file
+          // the model now knows — it is material it had to fetch — and letting it
+          // trip `spent` used to strip every tool mid-turn, web included.
+          if (name === "web") {
+            webBytes += body.length;
+            if (webBytes > MAX_WEB_BYTES) body += "\n… this turn's web budget is spent";
+          } else {
+            toolBytes += body.length;
+            if (toolBytes > MAX_TOOL_BYTES) body += "\n… this turn's reading budget is spent";
+          }
         }
         messages.push({
           id: nextMessageId(),
@@ -1906,6 +1958,7 @@ async function listText(ctx, config) {
 export const __internals = {
   normalizeConfig,
   resolveRoute,
+  attemptTool,
   renderTranscript,
   renderForReading,
   userPrompt,

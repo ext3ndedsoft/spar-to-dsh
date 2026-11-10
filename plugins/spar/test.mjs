@@ -1212,6 +1212,12 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 56. a tool that throws becomes a tool result, not a dead turn
+{
+  const text = await __internals.attemptTool("web", { url: "https://no-such-host.invalid/page" }, null);
+  includes(text, "the web tool failed", "the failure is reported as a tool result");
+  includes(text, "not the end of your turn", "and the model is told it may continue");
+}
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

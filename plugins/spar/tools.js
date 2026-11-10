@@ -669,6 +669,28 @@ const WEB_MAX_BYTES = 300 * 1024;
 const WEB_TEXT_CHARS = 12_000;
 
 /**
+ * One network attempt, retried once.
+ *
+ * A bare `fetch` throws `TypeError: fetch failed` on any DNS blip or reset, and
+ * that used to travel up and kill the whole turn — a judge that wanted a source
+ * died instead of saying it could not reach one. Two attempts and an honest
+ * message keep the model in the conversation.
+ */
+async function attempt(url, options, tries = 2) {
+	let last;
+	for (let index = 0; index < tries; index += 1) {
+		try {
+			return await fetch(url, options);
+		} catch (error) {
+			last = error;
+			if (index + 1 < tries) await new Promise((resolve) => setTimeout(resolve, 400));
+		}
+	}
+	const cause = last?.cause?.code ?? last?.cause?.errno ?? last?.message ?? "network error";
+	throw new Error(`не удалось соединиться (${cause})`);
+}
+
+/**
  * The only async tool: `fetch` is a promise, and making every other tool async to
  * match would churn the whole call path for one leaf.
  */
@@ -677,7 +699,7 @@ export async function webRun(args, timeoutMs = WEB_TIMEOUT_MS) {
 	if (action === "fetch") {
 		const url = assertPublicUrl(args?.url);
 		const started = Date.now();
-		const response = await fetch(url, {
+		const response = await attempt(url, {
 			redirect: "follow",
 			signal: AbortSignal.timeout(timeoutMs),
 			headers: { "user-agent": "Mozilla/5.0 (compatible; spar/1.6; +https://github.com/ext3ndedsoft/spar-to-dsh)" },
@@ -691,7 +713,7 @@ export async function webRun(args, timeoutMs = WEB_TIMEOUT_MS) {
 	const query = String(args?.query ?? "").trim();
 	if (query === "") throw new Error('spar web: "query" is required for a search');
 	const started = Date.now();
-	const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+	const response = await attempt(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
 		signal: AbortSignal.timeout(timeoutMs),
 		headers: {
 			"user-agent": "Mozilla/5.0 (compatible; spar/1.6; +https://github.com/ext3ndedsoft/spar-to-dsh)",
