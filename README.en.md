@@ -77,8 +77,9 @@ Step-by-step, with the manual path: [docs/install.md](docs/install.md).
     - id: spar
       name: "./plugins/spar/index.js"
       config:
-        judge: deepseek            # or a provider/model pair from the catalog
-        defaultOpponent: gemini
+        defaultOpponent: "<provider>/<model>"   # from your harness catalog
+        judge: "<provider>/<model>"
+        challenger: "<provider>/<model>"
         language: ru
         tools: true
         maxToolRounds: 3
@@ -88,7 +89,9 @@ Step-by-step, with the manual path: [docs/install.md](docs/install.md).
         judgeTemperature: 0.25
 ```
 
-Everything here is a default the panel can override without a restart.
+Everything here is a default the panel can override without a restart. No model
+name ships with the plugin: the catalog belongs to the installation, and until
+one is picked `open` and `verdict` say so instead of guessing.
 
 ## What it is not
 

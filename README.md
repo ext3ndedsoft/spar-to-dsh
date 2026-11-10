@@ -49,6 +49,13 @@
 (`show`), его можно закрыть (`close`), а прошлые приговоры попадают в
 следующий спор коротким дайджестом, чтобы не переигрывать решённое.
 
+## Ни одной модели по умолчанию
+
+Плагин не привозит имён провайдеров: каталог моделей у каждой установки свой, а
+мост подписочного Gemini есть не у всех. Пока модель не выбрана, `open` и
+`verdict` падают с подсказкой, где её взять — в панели `◈` или в конфиге
+профиля. Ничего не «работает по умолчанию» за вашей спиной.
+
 ## Как это выглядит
 
 ```text
@@ -76,7 +83,8 @@ node install.mjs
 
 Скрипт копирует плагин в `~/.dsh/profiles/web/plugins/spar`, дописывает запись
 в `cordis.patch.yml` и создаёт `~/.dsh/spar` под транскрипты. Перезапустите
-оболочку — пилюля `◈` появится в правом нижнем углу.
+оболочку — пилюля `◈` появится в правом нижнем углу, и первым делом выберите
+модели в ней.
 
 Руками, с разбором каждого шага — [docs/install.md](docs/install.md).
 
@@ -89,8 +97,9 @@ node install.mjs
     - id: spar
       name: "./plugins/spar/index.js"
       config:
-        judge: deepseek            # или provider/model из каталога
-        defaultOpponent: gemini
+        defaultOpponent: "<provider>/<model>"   # из каталога вашего харнесса
+        judge: "<provider>/<model>"
+        challenger: "<provider>/<model>"
         language: ru
         tools: true
         maxToolRounds: 3
@@ -101,9 +110,10 @@ node install.mjs
 
 | Ключ | Что делает | По умолчанию |
 |---|---|---|
-| `judge` | кто выносит приговор | `deepseek` |
-| `defaultOpponent` | с кем спорим по умолчанию | `gemini` |
-| `challenger` | третья модель для дуэли и приговора | `sonnet-ag` |
+| `defaultOpponent` | с кем спорим | не задан — выбирается в панели |
+| `judge` | кто выносит приговор | не задан; `judge:"self"` — модель вызывающего |
+| `challenger` | третья модель для дуэли | не задан |
+| `opponents` | ваши алиасы поверх `provider/model` | пусто |
 | `language` | язык спора и приговора | `ru` |
 | `tools` | давать ли оппоненту доступ к проекту | `true` |
 | `maxToolRounds` | чтений на ход | `3` |
@@ -111,8 +121,13 @@ node install.mjs
 | `temperature` / `judgeTemperature` | темп оппонента и судьи | `0.8` / `0.25` |
 | `cwd` | что именно читает оппонент | каталог сессии |
 
-Выбор моделей — по каталогу харнесса, без правки YAML: алиасы удобны, но
-работает и пара `provider/model`.
+Алиасы объявляет профиль, а не плагин:
+
+```yaml
+        opponents:
+          gem: { provider: "antigravity", model: "gemini-3.8-flash" }
+          ds:  { provider: "zexkora", model: "deepseek-v4.1-flash-1017" }
+```
 
 ## Что он не делает
 
@@ -128,6 +143,7 @@ node install.mjs
 ## Документация
 
 - [Установка и удаление](docs/install.md)
+- [Техническая документация плагина](plugins/spar/README.md)
 - [История изменений](CHANGELOG.md)
 - [Безопасность](SECURITY.md)
 

@@ -57,27 +57,20 @@ const RESULT_WAIT_MS = 120_000;
 const MAX_RESULT_WAIT_MS = 300_000;
 
 const DEFAULTS = {
-  opponents: {
-    gemini: { provider: "antigravity", model: "gemini-3.8-flash" },
-    "gemini-tiered": { provider: "antigravity", model: "gemini-3.8-flash-tiered" },
-    // Different model families on the same Antigravity OAuth route: a useful
-    // third voice for verdicts when the other gateways are throttled or empty.
-    "claude-ag": { provider: "antigravity", model: "claude-opus-4-6-thinking" },
-    "sonnet-ag": { provider: "antigravity", model: "claude-sonnet-4-6" },
-    claude: { provider: "basisweb", model: "claude-sonnet-5.5" },
-    gpt: { provider: "basisweb", model: "gpt-6.1-sol" },
-    kimi: { provider: "zexkora", model: "kimi-k3" },
-    deepseek: { provider: "zexkora", model: "deepseek-v4.1-flash-1017" },
-  },
-  defaultOpponent: "gemini",
-  challenger: "sonnet-ag",
-  // The arbiter is this same model on the same gateway: fast enough to rule while
-// the argument is still warm, and never one of the debaters. Every other route
-// we tried (GLM, Kimi) spends minutes reasoning before writing a word. The
-// impartiality comes from the context, not from the weights: a clean prompt, no
-// memory of arguing, blinded sides, randomised order, and a forced steelman of
-// the side it is inclined to reject. `judge:"self"` follows the live route.
-  judge: "deepseek",
+  // Aliases are sugar, not assumptions: nothing here names a provider, because
+  // the catalog belongs to the installation. Define your own in the profile
+  // config (`opponents: { gem: { provider, model } }`) or just use
+  // `provider/model` everywhere.
+  opponents: {},
+  // No default opponent, challenger or judge. A plugin that ships with
+  // "gemini" assumes a bridge plenty of people do not run.
+  defaultOpponent: "",
+  challenger: "",
+  judge: "",
+  // The arbiter should be a route the user picked. `judge:"self"` opts in to
+  // "same model as the caller"; the impartiality comes from the context — clean
+  // prompt, no memory of arguing, blinded sides, order swapped by hash, forced
+  // steelman of the side it is inclined to reject.
   maxReplyTokens: 8192,
   // Language of the exchange itself. The tool's own headers stay English so the
   // client can parse them; everything the models write follows this.
@@ -157,11 +150,16 @@ function resolveRoute(spec, config) {
   if (text === "") {
     // The configured default may itself be a `provider/model` string — that is
     // what the settings panel writes when a model is picked from the catalog.
-    const fallback = config.opponents[config.defaultOpponent];
+    const fallback = config.opponents?.[config.defaultOpponent];
     if (fallback !== undefined) return { ...fallback, label: `${fallback.provider}/${fallback.model}` };
-    const pair = pairOf(config.defaultOpponent);
+    const pair = pairOf(config.defaultOpponent ?? "");
     if (pair !== undefined) return { ...pair, label: `${pair.provider}/${pair.model}` };
-    throw new Error(`spar: defaultOpponent "${config.defaultOpponent}" is not in opponents`);
+    // No model name ships with the plugin on purpose: the catalog differs per
+    // installation, and a bridge one person runs is not a bridge everyone has.
+    throw new Error(
+      "spar: модель не выбрана. Плагин не предполагает ни одной: у разных установок разные каталоги и мосты. " +
+        "Выбери модель в панели ◈ или укажи `defaultOpponent: <provider>/<model>` в конфиге профиля.",
+    );
   }
   const alias = config.opponents[text];
   if (alias !== undefined) return { provider: alias.provider, model: alias.model, label: `${alias.provider}/${alias.model}` };
@@ -169,8 +167,11 @@ function resolveRoute(spec, config) {
   const pair = pairOf(text);
   if (pair !== undefined) return { ...pair, label: `${pair.provider}/${pair.model}` };
 
-  const known = Object.keys(config.opponents).sort().join(", ");
-  throw new Error(`spar: unknown opponent "${text}". Use one of: ${known}, or "provider/model".`);
+  const known = Object.keys(config.opponents ?? {}).sort().join(", ");
+  throw new Error(
+    `spar: неизвестная модель "${text}". ` +
+      `Используй <provider>/<model> из каталога — он у каждой установки свой${known === "" ? "" : `, — или один из своих алиасов: ${known}`}.`,
+  );
 }
 
 function sameRoute(left, right) {
@@ -204,7 +205,15 @@ function judgeRoute(spec, config, exec) {
   if (text === "self") return live();
   if (text === "") {
     const configured = typeof config.judge === "string" ? config.judge.trim() : "";
-    if (configured === "" || configured === "self") return live();
+    if (configured === "self") return live();
+    if (configured === "") {
+      // Picking the caller's own model by default would be a decision about the
+      // user's setup, and the whole point of an arbiter is that they chose one.
+      throw new Error(
+        'spar verdict: судья не выбран. Укажи его в панели ◈, в конфиге (`judge: <provider>/<model>`), ' +
+          'либо явно `judge:"self"`, если судить должна та же модель, что вызвала спор.',
+      );
+    }
     return { ...resolveRoute(configured, config), self: false };
   }
   return { ...resolveRoute(text, config), self: false };

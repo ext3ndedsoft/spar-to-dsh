@@ -39,8 +39,9 @@ cp -r plugins/spar ~/.dsh/profiles/web/plugins/spar
     - id: spar
       name: "./plugins/spar/index.js"
       config:
-        judge: deepseek              # или provider/model из каталога
-        defaultOpponent: gemini
+        defaultOpponent: "<provider>/<model>"   # из каталога вашего харнесса
+        judge: "<provider>/<model>"
+        challenger: "<provider>/<model>"
         language: ru
         tools: true
         maxToolRounds: 3
@@ -49,8 +50,10 @@ cp -r plugins/spar ~/.dsh/profiles/web/plugins/spar
         timeoutMs: 180000
 ```
 
-`config` необязателен: всё, что не задано, берётся из дефолтов плагина, а
-модели и бюджеты потом меняются в панели без правки YAML.
+`config` необязателен, но имена моделей плагин не выдумывает: без выбранного
+оппонента `open` вернёт ошибку с подсказкой, а не начнёт спор с моделью, которой
+у вас может не быть. Проще всего перезапустить оболочку и выбрать модели в
+панели `◈` — она перечисляет каталог именно этого харнесса.
 
 ## Как это выглядит в работе
 

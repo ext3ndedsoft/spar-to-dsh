@@ -905,7 +905,7 @@ window.__ModuleLoader__.load({
 												children: modelOptions(
 													models,
 													true,
-													`как в профиле · ${effective.opponent ?? "—"}`,
+													`как в профиле · ${effective.opponent ?? "—"}`.replace("как в профиле · —", "не выбран — выбери модель"),
 												),
 											}),
 										],
@@ -920,7 +920,7 @@ window.__ModuleLoader__.load({
 												children: [
 													jsx("option", {
 														value: "",
-														children: `как в профиле · ${effective.judge ?? "я сам"}`,
+														children: effective.judge ? `как в профиле · ${effective.judge}` : "не выбран — выбери судью",
 														key: "auto",
 													}),
 													jsx("option", { value: "self", children: "я сам (моя модель)", key: "self" }),
@@ -939,7 +939,7 @@ window.__ModuleLoader__.load({
 												children: modelOptions(
 													models,
 													true,
-													`как в профиле · ${effective.challenger ?? "—"}`,
+													`как в профиле · ${effective.challenger ?? "—"}`.replace("как в профиле · —", "не выбран"),
 												),
 											}),
 										],

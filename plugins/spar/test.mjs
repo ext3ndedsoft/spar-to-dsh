@@ -80,7 +80,24 @@ function makeHarness({ text = "opponent reply", finish = { kind: "stop" }, dir, 
     get: (name) => (name === "llm" ? llm : undefined),
     logger: { warn: () => {} },
   };
-  apply(ctx, { dir, ...(config ?? {}) });
+  // The plugin ships no models; a test fixture names its own, exactly like a
+  // profile would. Every alias used by the suite is defined here.
+  apply(ctx, {
+    dir,
+    opponents: {
+      gemini: { provider: "antigravity", model: "gemini-3.8-flash" },
+      "gemini-tiered": { provider: "antigravity", model: "gemini-3.8-flash-tiered" },
+      kimi: { provider: "zexkora", model: "kimi-k3" },
+      deepseek: { provider: "zexkora", model: "deepseek-v4.1-flash-1017" },
+      "sonnet-ag": { provider: "antigravity", model: "claude-sonnet-4-6" },
+      claude: { provider: "basisweb", model: "claude-sonnet-5.5" },
+      gpt: { provider: "basisweb", model: "gpt-6.1-sol" },
+    },
+    defaultOpponent: "gemini",
+    challenger: "kimi",
+    judge: "deepseek",
+    ...(config ?? {}),
+  });
   const tool = tools[0];
   // Turns are async by default now; the offline suite asserts on the reply, so
   // it waits unless a test says otherwise (test 21 exercises the async path).
@@ -100,9 +117,9 @@ const exec = { signal: undefined };
 // 1. config + route resolution
 {
   const config = __internals.normalizeConfig({ opponents: { extra: { provider: "p", model: "m" } } });
-  eq(config.opponents.gemini.provider, "antigravity", "default alias kept after merge");
+  eq(Object.keys(config.opponents).join(","), "extra", "the plugin ships no model aliases of its own");
   eq(config.opponents.extra.model, "m", "custom alias merged");
-  eq(__internals.resolveRoute("gemini", config).model, "gemini-3.8-flash", "alias resolves");
+  eq(__internals.resolveRoute("extra", config).model, "m", "alias resolves");
   eq(__internals.resolveRoute("basisweb/gpt-6.1-sol", config).provider, "basisweb", "provider/model resolves");
   eq(__internals.resolveRoute("zexkora:kimi-k3.1-pro", config).model, "kimi-k3.1-pro", "provider:model resolves");
   let threw = false;
@@ -112,6 +129,20 @@ const exec = { signal: undefined };
     threw = true;
   }
   ok(threw, "unknown alias throws");
+
+  // 1b. nothing is assumed about which provider the installation has.
+  const bare = __internals.normalizeConfig({});
+  eq(bare.defaultOpponent, "", "no default opponent");
+  eq(bare.judge, "", "no default judge");
+  eq(bare.challenger, "", "no default challenger");
+  let message = "";
+  try {
+    __internals.resolveRoute("", bare);
+  } catch (error) {
+    message = String(error.message);
+  }
+  includes(message, "модель не выбрана", "an empty route explains itself instead of naming a model");
+  includes(message, "панели", "and points at the panel");
 }
 
 // 2. registration shape
@@ -666,6 +697,34 @@ const exec = { signal: undefined };
   const seen = JSON.stringify(judgeCall.messages ?? "");
   includes(seen, "MARKER-ONLY-IN-THE-DEBATE-REPO", "the arbiter opened the file from the debate's cwd");
   includes(String(judgeCall.system), "open at least one artefact per side", "and was told to verify artefacts");
+  cleanup();
+}
+
+// 30. nothing is assumed about which models the installation has
+{
+  const { dir, cleanup } = sandboxDir("nomodel");
+  const { tool } = makeHarness({ dir, config: { opponents: {}, defaultOpponent: "", judge: "", challenger: "" } });
+
+  let message = "";
+  try {
+    await tool.execute({ action: "open", topic: "x" }, exec);
+  } catch (error) {
+    message = String(error.message);
+  }
+  includes(message, "модель не выбрана", "open refuses to guess an opponent");
+  includes(message, "панели", "and points at the panel");
+
+  const both = await tool.execute({ action: "open", topic: "x", opponent: "antigravity/gemini-3.8-flash" }, exec);
+  includes(both.text, "antigravity/gemini-3.8-flash", "an explicit route works with no aliases at all");
+
+  message = "";
+  try {
+    await tool.execute({ action: "verdict", id: "d1" }, exec);
+  } catch (error) {
+    message = String(error.message);
+  }
+  includes(message, "судья не выбран", "verdict refuses to pick a judge");
+  includes(message, 'judge:"self"', "and names the explicit opt-in");
   cleanup();
 }
 
