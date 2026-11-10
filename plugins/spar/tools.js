@@ -142,6 +142,20 @@ export const TOOL_SCHEMAS = [
 			additionalProperties: false,
 		},
 	},
+	{
+		name: "web",
+		description:
+			"Search the web, or read one page. `query` searches (DuckDuckGo's no-JS page) and returns titles, URLs and snippets; `url` fetches that page and returns its text with the status code. Use it for facts outside the project — dates, versions, prices, who said what — and cite the URL. Local and private addresses are refused.",
+		parameters: {
+			type: "object",
+			properties: {
+				query: { type: "string", description: "Search terms." },
+				url: { type: "string", description: "A public http(s) URL to read as text." },
+				limit: { type: "number", description: "How many results to return, 1-12. Defaults to 8." },
+			},
+			additionalProperties: false,
+		},
+	},
 ];
 
 /** Whether a repository-relative path is allowed to be shown to a debater. */
@@ -569,6 +583,131 @@ export function runTests(root, runner, timeoutMs) {
 	if (trimmed === "") return `${head}\n(no output)`;
 	const tail = trimmed.length > 6000 ? `… (${trimmed.length - 6000} characters cut from the top)\n${trimmed.slice(-6000)}` : trimmed;
 	return `${head}\n${tail}`;
+}
+
+/**
+ * Search results from DuckDuckGo's no-JS page. Exported so the parser can be
+ * tested without a socket: scraping is exactly the kind of code that breaks
+ * silently when the markup shifts, and a test that needs the internet is a test
+ * that fails on the wrong day.
+ */
+export function parseSearchHtml(html, limit = 8) {
+	const results = [];
+	const anchor = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+	let match;
+	while ((match = anchor.exec(html)) !== null && results.length < limit) {
+		const href = decodeEntities(match[1]);
+		const title = htmlToText(match[2]).trim();
+		if (title === "" || href === "") continue;
+		// DuckDuckGo wraps the target in a redirect; the real URL is the `uddg` param.
+		let url = href;
+		try {
+			const parsed = new URL(href, "https://duckduckgo.com");
+			const target = parsed.searchParams.get("uddg");
+			if (target !== null) url = target;
+			else if (parsed.hostname.endsWith("duckduckgo.com") && parsed.pathname.startsWith("/l/")) continue;
+			else url = parsed.toString();
+		} catch {
+			continue;
+		}
+		results.push({ url, title });
+	}
+	const snippets = [...html.matchAll(/class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/g)].map((entry) => htmlToText(entry[1]).trim());
+	results.forEach((result, index) => {
+		result.snippet = snippets[index] ?? "";
+	});
+	return results;
+}
+
+function decodeEntities(text) {
+	const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'" };
+	return text
+		.replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+		.replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+		.replace(/&([a-z#0-9]+);/gi, (whole, name) => named[name.toLowerCase()] ?? whole);
+}
+
+/** Crude but predictable: drop script/style, turn block tags into newlines, strip the rest. */
+export function htmlToText(html) {
+	return decodeEntities(
+		String(html)
+			.replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, " ")
+			.replace(/<\/(p|div|li|h[1-6]|tr|br|section|article|pre|blockquote)>/gi, "\n")
+			.replace(/<br\s*\/?>/gi, "\n")
+			.replace(/<[^>]+>/g, " "),
+	)
+		.replace(/[ \t\u00a0]+/g, " ")
+		.replace(/\n{3,}/g, "\n\n")
+		.replace(/^\s+|\s+$/g, "");
+}
+
+/** A URL is fetchable only if it is public http(s): the tool must not become a LAN probe. */
+export function assertPublicUrl(raw) {
+	let url;
+	try {
+		url = new URL(String(raw));
+	} catch {
+		throw new Error(`not a URL: ${String(raw).slice(0, 80)}`);
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`only http(s) URLs can be fetched, got ${url.protocol}`);
+	const host = url.hostname.toLowerCase();
+	if (host === "localhost" || host === "::1" || host.endsWith(".local") || host.endsWith(".internal")) {
+		throw new Error(`refusing to fetch a local host: ${host}`);
+	}
+	const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+	if (v4 !== null) {
+		const [a, b] = [Number(v4[1]), Number(v4[2])];
+		const privateV4 =
+			a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 0;
+		if (privateV4) throw new Error(`refusing to fetch a private address: ${host}`);
+	}
+	return url.toString();
+}
+
+const WEB_TIMEOUT_MS = 20_000;
+const WEB_MAX_BYTES = 300 * 1024;
+const WEB_TEXT_CHARS = 12_000;
+
+/**
+ * The only async tool: `fetch` is a promise, and making every other tool async to
+ * match would churn the whole call path for one leaf.
+ */
+export async function webRun(args, timeoutMs = WEB_TIMEOUT_MS) {
+	const action = args?.action === "fetch" || typeof args?.url === "string" ? "fetch" : "search";
+	if (action === "fetch") {
+		const url = assertPublicUrl(args?.url);
+		const started = Date.now();
+		const response = await fetch(url, {
+			redirect: "follow",
+			signal: AbortSignal.timeout(timeoutMs),
+			headers: { "user-agent": "Mozilla/5.0 (compatible; spar/1.6; +https://github.com/ext3ndedsoft/spar-to-dsh)" },
+		});
+		const buffer = Buffer.from(await response.arrayBuffer()).subarray(0, WEB_MAX_BYTES);
+		const html = buffer.toString("utf8");
+		const text = htmlToText(/<html|<!doctype/i.test(html) ? html : html);
+		const body = text.length > WEB_TEXT_CHARS ? `${text.slice(0, WEB_TEXT_CHARS)}\n… (${text.length - WEB_TEXT_CHARS} characters cut)` : text;
+		return `[web · ${url} · ${response.status} · ${((Date.now() - started) / 1000).toFixed(1)}s · ${(buffer.length / 1024).toFixed(0)} KB read]\n${body === "" ? "(no readable text)" : body}`;
+	}
+	const query = String(args?.query ?? "").trim();
+	if (query === "") throw new Error('spar web: "query" is required for a search');
+	const started = Date.now();
+	const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+		signal: AbortSignal.timeout(timeoutMs),
+		headers: {
+			"user-agent": "Mozilla/5.0 (compatible; spar/1.6; +https://github.com/ext3ndedsoft/spar-to-dsh)",
+			accept: "text/html",
+		},
+	});
+	const html = await response.text();
+	const limit = Math.min(Math.max(Math.trunc(Number(args?.limit) || 8), 1), 12);
+	const results = parseSearchHtml(html, limit);
+	if (results.length === 0) return `[web · "${query}" · 0 results · ${response.status}]\nnothing parsed — the search page may have changed shape or returned a captcha`;
+	const lines = [`[web · "${query}" · ${results.length} results · ${((Date.now() - started) / 1000).toFixed(1)}s]`];
+	results.forEach((result, index) => {
+		lines.push(`${index + 1}. ${result.title}`, `   ${result.url}`, ...(result.snippet === "" ? [] : [`   ${result.snippet.slice(0, 400)}`]));
+	});
+	lines.push("", "fetch a URL with the same tool to read it; cite it as a link, not as a claim.");
+	return lines.join("\n");
 }
 
 export function runTool(root, name, args) {

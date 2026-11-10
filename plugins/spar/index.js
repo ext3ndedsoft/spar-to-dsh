@@ -35,7 +35,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { ALLOWED_TOOL_NAMES, TOOL_SCHEMAS, runTool } from "./tools.js";
+import { ALLOWED_TOOL_NAMES, TOOL_SCHEMAS, assertPublicUrl, parseSearchHtml, runTool, webRun } from "./tools.js";
 import { createLiveRegistry, liveHandler } from "./live.js";
 import { createSettingsStore, modelCatalog, modelsHandler, settingsHandler } from "./settings.js";
 
@@ -101,7 +101,9 @@ const DEFAULTS = {
 
 const MAX_TURNS = 200;
 const MAX_TURN_CHARS = 40_000;
-const MAX_RESULT_CHARS = 24_000;
+const MAX_RESULT_CHARS = 60_000;
+/** Per turn inside a transcript: one verbose side must not eat both. */
+const TURN_SHOWN_CHARS = 9_000;
 const MAX_FILES = 4;
 const MAX_FILE_CHARS = 60_000;
 
@@ -470,7 +472,9 @@ function systemFor(debate, side, config) {
     "- End with one observation or test that would settle the disagreement.",
     "- When a claim is about a whole file, read it with `whole: true`. A 200-line slice does not support a statement about the file, and a line-number citation taken from a slice proves less than it looks.",
     "- When a claim is about tests passing, failing or missing, `run` executes the project's own suite and returns the exit code. Buy the result instead of arguing about it.",
+    "- When the debate is not about the project you will have no repo tools — then rule on the arguments. With `web` you may check the one factual claim that decides the outcome, and citing the URL is enough; do not research a whole topic.",
     `- This turn allows ${String(config.maxToolRounds)} tool calls and about ${String(Math.round(MAX_TOOL_BYTES / 1024))} KB of file text. Plan the reads to fit: a whole file counts as one call, and if the answer needs more than the budget, say which part you could not open.`,
+    "- A fact outside this project — a version, a date, a price, who said what — is checkable with `web`: `query` searches, `url` reads one page. Cite the URL as a link; a claim about the world carries the same burden as a claim about the code.",
     "- If you could not read something you needed, say which part and why. Never infer what unread code probably does and present it as a finding.",
     "- 150-350 words. Prose only: no headings, no bullet lists longer than three items, no summary paragraphs.",
     "- Answer in the language the exchange is written in; keep code, identifiers, and quoted text unchanged.",
@@ -623,7 +627,7 @@ async function callModel(
   route,
   system,
   prompt,
-  { maxTokens, temperature, timeoutMs, signal, repo, maxToolRounds = MAX_TOOL_ROUNDS, onDelta },
+  { maxTokens, temperature, timeoutMs, signal, repo, maxToolRounds = MAX_TOOL_ROUNDS, onDelta, schemas, allowedToolNames },
 ) {
   const llm = resolveLlm(ctx);
   if (llm === undefined) {
@@ -684,10 +688,13 @@ async function callModel(
           ],
         });
       }
-      // The arbiter runs tests; the debaters read. A debater that can start the suite
-// can also make the project's own code run on its behalf mid-argument, and a
-// verdict is the only place where "the tests pass" is worth anything.
-      const roundTools = usesTools && !spent ? TOOL_SCHEMAS : undefined;
+      // A verdict on an argument about phones does not need the repo; a verdict on
+      // a claim about `index.js:412` does. The caller decides by saying `project`,
+      // otherwise the transcript decides: a side that opened a file made it about
+      // the project, and one that opened nothing did not.
+      const offered = schemas ?? TOOL_SCHEMAS;
+      const allowed = allowedToolNames ?? ALLOWED_TOOL_NAMES;
+      const roundTools = usesTools && !spent ? offered : undefined;
       const stream = call.stream({
         ...call.config,
         system,
@@ -762,15 +769,25 @@ async function callModel(
             parseFailed = true;
             args = {};
           }
-          const name = ALLOWED_TOOL_NAMES.has(askedCall.name) ? askedCall.name : "";
+          const name = allowed.has(askedCall.name) ? askedCall.name : "";
           body = parseFailed
             ? // Silent `{}` used to turn a malformed call into "the file is not there".
               "error: the tool arguments were not valid JSON — repeat the call with a JSON object"
             : name === ""
               ? `error: unknown tool ${askedCall.name}`
-              : runTool(repo.root, name, args);
+              : name === "web"
+                ? await webRun(args)
+                : runTool(repo.root, name, args);
           const subject =
-            typeof args.path === "string" ? args.path : typeof args.pattern === "string" ? args.pattern : "";
+            typeof args.path === "string"
+              ? args.path
+              : typeof args.pattern === "string"
+                ? args.pattern
+                : typeof args.query === "string"
+                  ? args.query
+                  : typeof args.url === "string"
+                    ? args.url
+                    : "";
           // A read that covered 200 of 3200 lines is not the same claim as one that
           // covered the file. The trail says which, so the arbiter can weigh it and
           // the caller can see whether a whole-file argument rests on a slice.
@@ -917,7 +934,12 @@ const PARAMETERS = {
     sides: {
       type: "array",
       items: { type: "string" },
-      description: "Duel only: exactly two sides — [for, against]. Aliases or provider/model.",
+      description: "Duel only: two sides — [for, against]. Aliases or provider/model. One entry plus `challenger` also works.",
+    },
+    project: {
+      type: "boolean",
+      description:
+        "Verdict only: whether the debate is about the project's code. Default: inferred — a side that opened a file made it about the project. `true` gives the judge the repo tools even if nobody read; `false` keeps it to the arguments and `web`.",
     },
     rounds: { type: "integer", description: "Duel only: exchanges to run, 1-4 (default 2). Each round is two model calls." },
     mode: {
@@ -1412,7 +1434,18 @@ export function apply(ctx, rawConfig = {}) {
             }
           }
           const transcript = debate.turns
-            .map((turn) => `${turn.role === "left" ? `A (${forSide.label}) FOR` : `B (${againstSide.label}) AGAINST`}: ${turn.text}`)
+            .map((turn) => {
+              // A side that said nothing must say nothing visibly: an empty line under
+              // "A (deepseek) FOR" reads as "I skipped it", not as "the model returned
+              // nothing", and the caller then wonders where its own argument went.
+              const said =
+                typeof turn.text === "string" && turn.text.trim() !== ""
+                  ? turn.text.length > TURN_SHOWN_CHARS
+                    ? `${turn.text.slice(0, TURN_SHOWN_CHARS)}\n… (${turn.text.length - TURN_SHOWN_CHARS} characters cut)`
+                    : turn.text
+                  : `(эта сторона не ответила · ${turn.finish ?? "no text"})`;
+              return `${turn.role === "left" ? `A (${forSide.label}) FOR` : `B (${againstSide.label}) AGAINST`}: ${said}${usedLine(turn)}`;
+            })
             .join("\n\n");
           return {
             text:
@@ -1449,11 +1482,23 @@ export function apply(ctx, rawConfig = {}) {
           // cited file is just a second opinion on prose.
           const judgeRepo =
             typeof debate.cwd === "string" && debate.cwd !== "" ? repoFor({ ...config, cwd: debate.cwd }, exec) : repo;
+          // Does this debate live in the project? Either the caller says so, or a
+          // side actually opened something. A phone argument gets no repo tools:
+          // forcing a walk there produced verdicts that quoted files nobody cited.
+          const projectish =
+            typeof args?.project === "boolean"
+              ? args.project
+              : debate.turns.some((turn) => Array.isArray(turn.used) && turn.used.length > 0);
+          const judgeSchemas = projectish ? TOOL_SCHEMAS : TOOL_SCHEMAS.filter((schema) => schema.name === "web");
+          const judgeAllowed = new Set(judgeSchemas.map((schema) => schema.name));
           const record = debate.turns
             .filter((turn) => turn.role !== "judge")
             .map((turn) => `SIDE ${sideOf(turn.role)}: ${turn.text}${usedLine(turn)}`)
             .join("\n\n");
-          const prompt = `PROPOSITION: ${debate.topic}\n\n## DEBATE\n${record}`;
+          const scope = projectish
+            ? ""
+            : "\n\nNOTE: no side opened a project file in this debate, and it is not about the project. Rule on the arguments and on any sources they cite; the only tool you have is `web` for checking a factual claim.";
+          const prompt = `PROPOSITION: ${debate.topic}\n\n## DEBATE\n${record}${scope}`;
           live.begin(callId, { id: debate.id, role: "judge", phase: "verdict", route: judge.label, topic: debate.topic });
           let reply;
           try {
@@ -1464,6 +1509,8 @@ export function apply(ctx, rawConfig = {}) {
               // The arbiter verifies; the debater argues. One reading budget for both
               // meant the judge ran out while checking a claim it had already quoted.
               maxToolRounds: positiveInt(config.judgeToolRounds, 8),
+              schemas: judgeSchemas,
+              allowedToolNames: judgeAllowed,
               signal,
               repo: judgeRepo,
               onDelta: (patch) => live.progress(callId, patch),
@@ -1654,4 +1701,6 @@ export const __internals = {
   readAttachments,
   JUDGE_SYSTEM,
   runTool,
+  parseSearchHtml,
+  assertPublicUrl,
 };

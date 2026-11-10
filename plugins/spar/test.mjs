@@ -698,7 +698,9 @@ const exec = { signal: undefined };
 
   const { tool, calls } = makeHarness({ dir, text: scripted, config: { tools: true, maxToolRounds: 2 } });
   await tool.execute({ action: "open", topic: "t", cwd: project, async: false }, exec);
-  await tool.execute({ action: "verdict", id: "d1", async: false }, exec);
+  // Neither side read anything, so the debate counts as not being about the repo;
+  // `project: true` is the caller's way to say otherwise.
+  await tool.execute({ action: "verdict", id: "d1", project: true, async: false }, exec);
 
   const judgeCall = calls[calls.length - 1];
   const seen = JSON.stringify(judgeCall.messages ?? "");
@@ -1053,6 +1055,49 @@ const exec = { signal: undefined };
   includes(__internals.runTool(dir, "grep", { pattern: "TOKEN" }), "tokens.ts", "and searchable");
   writeFileSync(path.join(dir, "tokens.json"), "{\"a\":1}\n", "utf8");
   includes(__internals.runTool(dir, "read", { path: "tokens.json" }), "denied", "a credential-shaped file still is not");
+  cleanup();
+}
+
+// 50. the search parser survives the real markup, and the URL guard refuses LAN
+{
+  const html = `
+    <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=x">First &amp; best</a>
+    <a class="result__snippet" href="#">It says <b>this</b> about the thing.</a>
+    <a rel="nofollow" class="result__a" href="https://example.org/b">Second</a>
+    <a class="result__snippet" href="#">Another snippet.</a>`;
+  const found = __internals.parseSearchHtml(html, 5);
+  eq(found.length, 2, "two results parsed");
+  eq(found[0].url, "https://example.com/a", "the uddg redirect is unwrapped");
+  includes(found[0].title, "First & best", "entities decoded");
+  includes(found[0].snippet, "It says this about the thing", "the snippet is text, not tags");
+  eq(found[1].url, "https://example.org/b", "a plain href is kept");
+}
+{
+  for (const bad of ["http://localhost:3080/spar-settings", "http://127.0.0.1/x", "http://10.0.0.5/", "file:///C:/Windows", "http://192.168.1.1/"]) {
+    let refused = false;
+    try {
+      __internals.assertPublicUrl(bad);
+    } catch {
+      refused = true;
+    }
+    if (!refused) throw new Error(`fetched a private or non-http URL: ${bad}`);
+  }
+  eq(__internals.assertPublicUrl("https://example.com/a?b=1"), "https://example.com/a?b=1", "a public URL passes");
+}
+
+// 51. the judge only gets repo tools when the debate is about the project
+{
+  const { dir, cleanup } = sandboxDir("judgescope");
+  writeFileSync(path.join(dir, "a.txt"), "x\n", "utf8");
+  const { tool, calls } = makeHarness({ dir });
+  const opened = await tool.execute({ action: "open", topic: "айфон против андроида", cwd: dir, async: false }, exec);
+  const idMatch = /\[spar (d\d+)/.exec(opened.text);
+  if (idMatch === null) throw new Error(`no debate id in ${opened.text.slice(0, 120)}`);
+  calls.length = 0;
+  await tool.execute({ action: "verdict", id: idMatch[1], async: false }, exec);
+  const judgeTools = JSON.stringify(calls[0]?.tools ?? []);
+  if (judgeTools.includes('"name":"read"')) throw new Error("the judge was offered repo tools for a phone argument");
+  includes(judgeTools, '"name":"web"', "but it keeps the web");
   cleanup();
 }
 
