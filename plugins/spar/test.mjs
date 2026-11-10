@@ -901,6 +901,54 @@ const exec = { signal: undefined };
   eq(registry.newest(), null, "and is not served as the newest live turn");
 }
 
+// 41. a tool call without an id still gets a paired id (Anthropic rejects the rest)
+{
+  const { dir, cleanup } = sandboxDir("toolid");
+  writeFileSync(path.join(dir, "a.txt"), "hello\n", "utf8");
+  let phase = 0;
+  const scripted = () => {
+    phase += 1;
+    // deliberately no `id`, the way some streams report a call
+    return phase === 1
+      ? { toolCall: { name: "read", arguments: JSON.stringify({ path: "a.txt" }) } }
+      : "ok";
+  };
+  const { tool, calls } = makeHarness({ dir, text: scripted });
+  await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
+  const last = JSON.stringify(calls[calls.length - 1].messages ?? "");
+  includes(last, '"type":"tool-call"', "the tool round is recorded");
+  const block = (calls[calls.length - 1].messages ?? [])
+    .flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+    .find((entry) => entry.type === "tool-call");
+  eq(typeof block?.id, "string", "a call that arrived without an id gets one minted");
+  cleanup();
+}
+
+// 42. a sides array handed over as JSON text still resolves
+{
+  const { dir, cleanup } = sandboxDir("sidestext");
+  const { tool } = makeHarness({ dir });
+  const result = await tool.execute(
+    { action: "duel", topic: "t", rounds: 1, sides: '["gemini", "kimi"]', async: false },
+    exec,
+  );
+  includes(result.text, "FOR", "the duel started from a stringified array");
+  cleanup();
+}
+
+// 43. one named side plus `challenger` is a duel, not a silent default
+{
+  const { dir, cleanup } = sandboxDir("oneside");
+  const { tool } = makeHarness({ dir });
+  const result = await tool.execute(
+    { action: "duel", topic: "t", rounds: 1, sides: ["kimi"], challenger: "deepseek", async: false },
+    exec,
+  );
+  includes(result.text, "kimi", "the named side is the one that argues FOR");
+  includes(result.text, "deepseek", "and challenger takes the other corner");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

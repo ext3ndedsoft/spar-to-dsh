@@ -89,6 +89,8 @@ const DEFAULTS = {
   // writes anything, and the provider counts both against one cap. The budget is
   // sized so a full ruling fits after a full train of thought.
   judgeTokens: 16384,
+  /** Reading rounds for a verdict; the arbiter checks more than a debater argues. */
+  judgeToolRounds: 8,
   temperature: 0.8,
   judgeTemperature: 0.25,
   timeoutMs: 180_000,
@@ -332,9 +334,18 @@ function renderTranscript(turns, viewer, maxChars) {
       tail.unshift(usable[index]);
     }
     const elided = usable.length - head.length - tail.length;
+    // "How many" is not enough: an arbiter that knows the picture is incomplete but
+    // not what is missing cannot weigh what it reads, and it cannot ask for the gap.
+    const dropped = usable.slice(head.length, usable.length - tail.length);
+    const names = dropped
+      .map((turn, position) => `#${head.length + position + 1} ${turn.role === "left" ? "caller" : turn.role === "right" ? "opponent" : turn.role}`)
+      .join(", ");
     selected = [
       ...head,
-      { role: "note", text: `[${elided} earlier turns elided to fit the context budget]` },
+      {
+        role: "note",
+        text: `[${elided} earlier turns elided to fit the context budget: ${names}. Their content is not in this transcript — say so rather than reconstructing it.]`,
+      },
       ...tail,
     ];
   }
@@ -689,7 +700,18 @@ async function callModel(
           reasoning += chunk.text;
           onDelta?.({ reasoningDelta: chunk.text });
         } else if (chunk?.type === "block-end" && chunk.block?.type === "tool-call") {
-          asked.push(chunk.block);
+          // Anthropic-shaped providers require `tool_use.id` on the assistant block and
+          // a matching `tool_result` id. Not every stream supplies one; a missing id is
+          // a 400 on the *next* request, after the model has already been charged for
+          // the turn. Mint a stable one here so both sides of the pair agree.
+          asked.push({
+            id:
+              typeof chunk.block.id === "string" && chunk.block.id !== ""
+                ? chunk.block.id
+                : `spar-${String(toolRounds)}-${String(asked.length)}`,
+            name: chunk.block.name,
+            arguments: chunk.block.arguments,
+          });
         } else if (chunk?.type === "finish") {
           finish = chunk.reason;
         }
@@ -1324,11 +1346,26 @@ export function apply(ctx, rawConfig = {}) {
       if (action === "duel") {
         const topic = typeof args?.topic === "string" ? args.topic.trim() : "";
         if (topic === "") throw new Error('spar duel: "topic" is required');
-        let sides = Array.isArray(args?.sides) && args.sides.length === 2 ? args.sides : null;
-        if (sides === null && typeof args?.sides === "string" && args.sides.includes(",")) {
-          const parts = args.sides.split(",").map((entry) => entry.trim()).filter(Boolean);
-          if (parts.length === 2) sides = parts;
+        // `sides` reaches us in three shapes: an array, a JSON string, a comma list. One
+        // element is legitimate when `challenger` names the other corner — requiring
+        // exactly two silently dropped it and substituted the default opponent.
+        let sides = null;
+        if (Array.isArray(args?.sides)) sides = args.sides.map((entry) => String(entry).trim()).filter(Boolean);
+        else if (typeof args?.sides === "string" && args.sides.trim() !== "") {
+          const raw = args.sides.trim();
+          if (raw.startsWith("[")) {
+            let parsed;
+            try {
+              parsed = JSON.parse(raw);
+            } catch {
+              throw new Error(`spar duel: sides as text must be a JSON array — got ${raw.slice(0, 80)}`);
+            }
+            if (Array.isArray(parsed)) sides = parsed.map((entry) => String(entry).trim()).filter(Boolean);
+          } else {
+            sides = raw.split(",").map((entry) => entry.trim()).filter(Boolean);
+          }
         }
+        if (sides !== null && sides.length > 2) throw new Error("spar duel: sides takes at most two models");
         const forSide = resolveRoute(sides?.[0], config);
         const againstSide = resolveRoute(sides?.[1] ?? args?.challenger ?? config.challenger, config);
         if (sameRoute(forSide, againstSide)) {
@@ -1415,6 +1452,9 @@ export function apply(ctx, rawConfig = {}) {
               maxTokens: Math.max(positiveInt(config.judgeTokens, 12000), config.maxReplyTokens),
               temperature: config.judgeTemperature,
               timeoutMs: Math.max(config.timeoutMs, 240_000),
+              // The arbiter verifies; the debater argues. One reading budget for both
+              // meant the judge ran out while checking a claim it had already quoted.
+              maxToolRounds: positiveInt(config.judgeToolRounds, 8),
               signal,
               repo: judgeRepo,
               onDelta: (patch) => live.progress(callId, patch),
