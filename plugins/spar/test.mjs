@@ -639,6 +639,36 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 29. the judge reads the debate's project, not the session directory
+{
+  const { dir, cleanup } = sandboxDir("judgecwd");
+  const project = path.join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(path.join(project, "only-here.txt"), "MARKER-ONLY-IN-THE-DEBATE-REPO\n", "utf8");
+
+  // The arbiter asks for a file; only the debate's own directory contains it,
+  // so a successful read proves which repo the judge was handed.
+  let judgeAsked = false;
+  const scripted = (options) => {
+    if (!String(options.system ?? "").includes("arbiter")) return "opponent reply";
+    if (!judgeAsked) {
+      judgeAsked = true;
+      return { toolCall: { id: "j1", name: "read", arguments: { path: "only-here.txt" } } };
+    }
+    return "ruling";
+  };
+
+  const { tool, calls } = makeHarness({ dir, text: scripted, config: { tools: true, maxToolRounds: 2 } });
+  await tool.execute({ action: "open", topic: "t", cwd: project, async: false }, exec);
+  await tool.execute({ action: "verdict", id: "d1", async: false }, exec);
+
+  const judgeCall = calls[calls.length - 1];
+  const seen = JSON.stringify(judgeCall.messages ?? "");
+  includes(seen, "MARKER-ONLY-IN-THE-DEBATE-REPO", "the arbiter opened the file from the debate's cwd");
+  includes(String(judgeCall.system), "open at least one artefact per side", "and was told to verify artefacts");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

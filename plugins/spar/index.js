@@ -265,7 +265,7 @@ function saveDebate(config, debate) {
   writeFileSync(debatePath(config, debate.id), JSON.stringify(debate, null, 2), "utf8");
 }
 
-function newDebate({ id, topic, kind, mode, intensity, left, right, stance, attach }) {
+function newDebate({ id, topic, kind, mode, intensity, left, right, stance, attach, cwd }) {
   const now = new Date().toISOString();
   return {
     version: 1,
@@ -278,6 +278,9 @@ function newDebate({ id, topic, kind, mode, intensity, left, right, stance, atta
     left,
     right,
     attach,
+    // The directory the debate is scoped to. Kept because the arbiter must read
+    // the same project the debaters argued about, not the session's directory.
+    cwd: cwd ?? "",
     turns: [],
     verdict: null,
     closed: false,
@@ -678,7 +681,9 @@ async function callModel(
           toolRounds += 1;
           let args = {};
           try {
-            args = JSON.parse(askedCall.arguments === "" ? "{}" : askedCall.arguments);
+            // Providers disagree on this: some send a JSON string, some an object.
+            const raw = askedCall.arguments;
+            args = typeof raw === "object" && raw !== null ? raw : JSON.parse(raw === "" || raw === undefined ? "{}" : raw);
           } catch {
             args = {};
           }
@@ -1175,6 +1180,9 @@ export function apply(ctx, rawConfig = {}) {
           },
           right,
           stance: typeof args?.stance === "string" ? args.stance.trim() : "",
+          // Remembered, not just used for this turn: the arbiter has to read the
+          // same project the debaters argued about.
+          cwd: repo === undefined ? "" : repo.root,
           attach: Array.isArray(args?.files) ? readAttachments(args.files, config) : [],
         });
         saveDebate(config, debate);
