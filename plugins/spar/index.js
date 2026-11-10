@@ -91,6 +91,8 @@ const DEFAULTS = {
   judgeTokens: 16384,
   /** Reading rounds for a verdict; the arbiter checks more than a debater argues. */
   judgeToolRounds: 8,
+  /** Web search for the sides. Off by default: an opinion is not a research task. */
+  web: false,
   temperature: 0.8,
   judgeTemperature: 0.25,
   timeoutMs: 180_000,
@@ -283,7 +285,7 @@ function saveDebate(config, debate) {
   writeFileSync(debatePath(config, debate.id), JSON.stringify(debate, null, 2), "utf8");
 }
 
-function newDebate({ id, topic, kind, mode, intensity, left, right, stance, attach, cwd }) {
+function newDebate({ id, topic, kind, mode, intensity, left, right, stance, attach, cwd, web }) {
   const now = new Date().toISOString();
   return {
     version: 1,
@@ -299,6 +301,9 @@ function newDebate({ id, topic, kind, mode, intensity, left, right, stance, atta
     // The directory the debate is scoped to. Kept because the arbiter must read
     // the same project the debaters argued about, not the session's directory.
     cwd: cwd ?? "",
+    // Off unless the caller asked: a debate about tea is not a research task, and
+    // giving both sides a search box turned every opinion into a slow scrape.
+    web: web === true,
     turns: [],
     verdict: null,
     closed: false,
@@ -472,9 +477,8 @@ function systemFor(debate, side, config) {
     "- End with one observation or test that would settle the disagreement.",
     "- When a claim is about a whole file, read it with `whole: true`. A 200-line slice does not support a statement about the file, and a line-number citation taken from a slice proves less than it looks.",
     "- When a claim is about tests passing, failing or missing, `run` executes the project's own suite and returns the exit code. Buy the result instead of arguing about it.",
-    "- When the debate is not about the project you will have no repo tools — then rule on the arguments. With `web` you may check the one factual claim that decides the outcome, and citing the URL is enough; do not research a whole topic.",
+    "- When the debate is not about the project you get no repo tools, and that is normal — argue from what is in front of you. Searching the web is off unless this debate asked for it; an opinion about tea and coffee is not a research task.",
     `- This turn allows ${String(config.maxToolRounds)} tool calls and about ${String(Math.round(MAX_TOOL_BYTES / 1024))} KB of file text. Plan the reads to fit: a whole file counts as one call, and if the answer needs more than the budget, say which part you could not open.`,
-    "- A fact outside this project — a version, a date, a price, who said what — is checkable with `web`: `query` searches, `url` reads one page. Cite the URL as a link; a claim about the world carries the same burden as a claim about the code.",
     "- If you could not read something you needed, say which part and why. Never infer what unread code probably does and present it as a finding.",
     "- 150-350 words. Prose only: no headings, no bullet lists longer than three items, no summary paragraphs.",
     "- Answer in the language the exchange is written in; keep code, identifiers, and quoted text unchanged.",
@@ -482,6 +486,11 @@ function systemFor(debate, side, config) {
     "",
     intensityRules(debate.intensity),
   ];
+  if (debate.web === true) {
+    rules.push(
+      "- This debate asked for sources: `web` with `query` searches and `url` reads one page. Use it for the one factual claim that decides the exchange, cite the link, and stop there — researching a topic is not arguing.",
+    );
+  }
   if (debate.stance !== "") rules.push("", `The position under dispute, as the opponent framed it: ${debate.stance}`);
   if (debate.kind === "duel") {
     rules.push(
@@ -887,6 +896,8 @@ const DESCRIPTION = [
   "",
   "The other side is not limited to your summary: it can read the project itself (`read`/`grep`/`glob`/`git`, scoped to `cwd`), and every turn reports what it actually read.",
   "",
+  "Models are optional. `open` with only a `topic` uses the profile's opponent and judge — that is the normal case, because the profile already names them. Pass `opponent`/`judge` only when the user asked for a specific model by name, and never invent one: `models` lists the valid ids, `list` shows what is already configured.",
+  "",
   "Actions:",
   "- open   — { topic, opponent?, mode?, intensity?, stance?, files?, opening? } → new id + the other side's opening. `opening:\"me\"` starts silent so you speak first.",
   "- say    — { id, message } → they answer with their strongest objection; your message is recorded as your turn.",
@@ -908,7 +919,7 @@ const PARAMETERS = {
       type: "string",
       enum: ["open", "say", "duel", "verdict", "result", "show", "list", "models", "close"],
       description:
-        "open: start a debate; say: your turn in it; duel: two models argue while you watch; verdict: a third model judges; result: read the newest turn (for async runs); show: full transcript; list: debates + routes; models: the provider/model catalog of this harness; close: mark closed.",
+        "open: start a debate (needs only `topic`); say: your turn in it; duel: two models argue while you watch; verdict: a third model judges; result: read the newest turn (for async runs); show: full transcript; list: debates + routes; models: the provider/model catalog of this harness; close: mark closed.",
     },
     id: { type: "string", description: 'Debate id, e.g. "d3". Required for say, verdict, show, close.' },
     topic: { type: "string", description: "The proposition or question under dispute (open, duel)." },
@@ -935,6 +946,11 @@ const PARAMETERS = {
       type: "array",
       items: { type: "string" },
       description: "Duel only: two sides — [for, against]. Aliases or provider/model. One entry plus `challenger` also works.",
+    },
+    web: {
+      type: "boolean",
+      description:
+        "Allow the web (`query`/`url`) for the sides and the arbiter. Off by default: an opinion debate is not a research task. Set it when the topic turns on a checkable fact.",
     },
     project: {
       type: "boolean",
@@ -1187,6 +1203,8 @@ export function apply(ctx, rawConfig = {}) {
         signal: options.signal,
         repo: options.repo,
         maxToolRounds: positiveInt(config.maxToolRounds, MAX_TOOL_ROUNDS),
+        schemas: debate.web === true ? TOOL_SCHEMAS : TOOL_SCHEMAS.filter((schema) => schema.name !== "web"),
+        allowedToolNames: debate.web === true ? ALLOWED_TOOL_NAMES : new Set([...ALLOWED_TOOL_NAMES].filter((name) => name !== "web")),
         onDelta: (patch) => {
           // A call that errored, or was refused because the budget was spent, is not
           // evidence. Recording it in the trail would let a claim rest on a file the
@@ -1302,12 +1320,38 @@ export function apply(ctx, rawConfig = {}) {
         // user read a URL or edit YAML before their first debate. The panel is a
         // client of this list, not the gate to it.
         const { models } = await modelCatalog(resolveLlm(ctx));
-        const rows = models.map((model) => `${model.label}${model.chat === false ? "   (not a chat model)" : ""}`);
+        const chat = models.filter((model) => model.chat !== false);
+        // What is already configured comes first: the question behind `models` is
+        // almost always "who will actually argue", and a flat dump answers it only
+        // by alphabet — a caller then assumes the profile is empty and goes looking
+        // for model names in the news.
+        const configured = [
+          `opponent (спорит с тобой): ${config.defaultOpponent || "не выбран"}`,
+          `challenger (вторая сторона дуэли): ${config.challenger || "не выбран"}`,
+          `judge (выносит вердикт): ${config.judge || "не выбран"}`,
+        ];
+        const byProvider = new Map();
+        for (const model of chat) {
+          const bucket = byProvider.get(model.provider) ?? [];
+          bucket.push(model.model);
+          byProvider.set(model.provider, bucket);
+        }
+        const table = [...byProvider.entries()]
+          .sort((left, right) => left[0].localeCompare(right[0]))
+          .map(([provider, names]) => `${provider}: ${names.join(", ")}`);
         return {
-          text:
-            `[spar models · ${rows.length}]\n${rows.join("\n")}\n\n` +
-            "Use any of these as `opponent`, `judge` or `challenger`. `provider/model` works without aliases; " +
-            'a bad name fails at the provider, not here.',
+          text: [
+            `[spar models · ${chat.length} chat models · ${byProvider.size} providers]`,
+            "уже выбрано в профиле:",
+            ...configured.map((line) => `  ${line}`),
+            "",
+            "поэтому для обычного спора модели указывать не надо: `open` с одним `topic` возьмёт их отсюда.",
+            "",
+            "каталог (provider: models):",
+            ...table,
+            "",
+            "если пользователь назвал модель — бери её из этого списка. выдуманное имя падает у провайдера, а не здесь, и спор не начнётся.",
+          ].join("\n"),
         };
       }
 
@@ -1333,6 +1377,7 @@ export function apply(ctx, rawConfig = {}) {
           // Remembered, not just used for this turn: the arbiter has to read the
           // same project the debaters argued about.
           cwd: repo === undefined ? "" : repo.root,
+          web: args?.web === true || config.web === true,
           attach: Array.isArray(args?.files) ? readAttachments(args.files, config) : [],
         });
         saveDebate(config, debate);
@@ -1419,6 +1464,7 @@ export function apply(ctx, rawConfig = {}) {
           left: forSide,
           right: againstSide,
           stance: typeof args?.stance === "string" ? args.stance.trim() : "",
+          web: args?.web === true || config.web === true,
           attach: Array.isArray(args?.files) ? readAttachments(args.files, config) : [],
         });
         saveDebate(config, debate);
@@ -1493,7 +1539,12 @@ export function apply(ctx, rawConfig = {}) {
             typeof args?.project === "boolean"
               ? args.project
               : debate.turns.some((turn) => Array.isArray(turn.used) && turn.used.length > 0);
-          const judgeSchemas = projectish ? TOOL_SCHEMAS : TOOL_SCHEMAS.filter((schema) => schema.name === "web");
+          // Repo tools only for a project debate; the web only when this debate asked for
+          // sources. An opinion debate gets neither, so the arbiter does not go
+          // reading code nobody cited or searching a topic that is not a fact.
+          const judgeSchemas = (projectish ? TOOL_SCHEMAS : TOOL_SCHEMAS.filter((schema) => schema.name === "web")).filter(
+            (schema) => schema.name !== "web" || debate.web === true || args?.web === true,
+          );
           const judgeAllowed = new Set(judgeSchemas.map((schema) => schema.name));
           const record = debate.turns
             .filter((turn) => turn.role !== "judge")

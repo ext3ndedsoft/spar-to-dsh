@@ -506,7 +506,12 @@ window.__ModuleLoader__.load({
 			// first poll is still in flight must not be painted as finished.
 			const liveKnown = live !== null && live !== undefined;
 			const liveDone = liveKnown && live.done === true;
-			const working = liveKnown ? !liveDone : running || started;
+			// Only the registry may animate a card. The host prop says "started" forever
+			// for an async call — its text never changes after the tool returns — so a
+			// missing registry entry used to mean an endless "пишет" per tool call, and
+			// a debate showed four of them at once. No entry: show the static text, and
+			// the recovery line appears only after a real timeout.
+			const working = liveKnown && !liveDone;
 			const streaming = working;
 			const smooth = useSmoothText(live?.text ?? "", streaming);
 

@@ -748,8 +748,9 @@ const exec = { signal: undefined };
   const { tool } = makeHarness({ dir });
   const result = await tool.execute({ action: "models" }, exec);
   includes(result.text, "spar models", "the action answers with a header the card understands");
-  includes(result.text, "antigravity/gemini-3.8-flash", "and lists provider/model pairs");
-  includes(result.text, "without aliases", "and says aliases are optional");
+  includes(result.text, "antigravity:", "and groups the catalog by provider");
+  includes(result.text, "gemini-3.8-flash", "with the model names under it");
+  includes(result.text, "уже выбрано в профиле", "it answers the real question first: who will argue");
   cleanup();
 }
 
@@ -1104,7 +1105,11 @@ const exec = { signal: undefined };
   await tool.execute({ action: "verdict", id: idMatch[1], async: false }, exec);
   const judgeTools = JSON.stringify(calls[0]?.tools ?? []);
   if (judgeTools.includes('"name":"read"')) throw new Error("the judge was offered repo tools for a phone argument");
-  includes(judgeTools, '"name":"web"', "but it keeps the web");
+  if (judgeTools.includes('"name":"web"')) throw new Error(`an opinion debate got a search box: ${judgeTools}`);
+  // ...unless the caller asks for sources on purpose.
+  calls.length = 0;
+  await tool.execute({ action: "verdict", id: idMatch[1], web: true, async: false }, exec);
+  includes(JSON.stringify(calls[0]?.tools ?? []), '"name":"web"', "and `web: true` buys it back");
   cleanup();
 }
 
