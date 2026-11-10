@@ -669,7 +669,9 @@ const exec = { signal: undefined };
   const state = JSON.parse(readFileSync(path.join(dir, "d1.json"), "utf8"));
   eq(state.pending ?? null, null, "a failed turn clears the pending marker");
   const result = await tool.execute({ action: "result", id: "d1" }, exec);
-  includes(result.text, "never started", "there is no reply to report");
+  includes(result.text, "failed", "a failed turn is reported as a failure");
+  includes(result.text, "boom", "and the provider's reason comes with it");
+  includes(result.text, "not the answer", "and it says the previous round is not the answer");
   cleanup();
 }
 

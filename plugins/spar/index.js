@@ -457,6 +457,8 @@ function systemFor(debate, side, config) {
     '- Concede only what the opponent actually demonstrated, and say "conceded:" plus the specific point. Never concede to be agreeable; never fabricate agreement either.',
     "- If the opponent is simply right, say so in one line and name the strongest remaining doubt instead of manufacturing a fight.",
     "- End with one observation or test that would settle the disagreement.",
+    "- When a claim is about a whole file, read it with `whole: true`. A 200-line slice does not support a statement about the file, and a line-number citation taken from a slice proves less than it looks.",
+    "- If you could not read something you needed, say which part and why. Never infer what unread code probably does and present it as a finding.",
     "- 150-350 words. Prose only: no headings, no bullet lists longer than three items, no summary paragraphs.",
     "- Answer in the language the exchange is written in; keep code, identifiers, and quoted text unchanged.",
     languageLine(config),
@@ -653,7 +655,7 @@ async function callModel(
         (controls) => controls,
       );
       finish = undefined;
-      const spent = toolRounds >= maxToolRounds;
+      const spent = toolRounds >= maxToolRounds || toolBytes >= MAX_TOOL_BYTES;
       if (spent && toolRounds > 0 && readBudgetAnnounced === false) {
         // Losing the tools silently is worse than losing them loudly: a model that
         // cannot look something up must not report "not found" as if it had looked.
@@ -707,26 +709,39 @@ async function callModel(
         source: { kind: "model", provider: route.provider, model: route.model },
       });
 
-      if (asked.length > 0 && toolRounds >= maxToolRounds) {
+      if (asked.length > 0 && spent) {
         wastedRounds += 1;
-        if (wastedRounds >= 2) break;
+        if (wastedRounds >= 2) {
+          // The turn is cut while the model was still trying to look something up,
+          // so whatever it wrote is a preamble, not an answer. Say so, or it will
+          // be read later as a complete argument.
+          if (text.trim() !== "") text += "\n\n[stopped before answering: the reading budget was spent while the model was still asking for files]";
+          break;
+        }
       }
       for (const askedCall of asked) {
         let body;
-        if (toolRounds >= maxToolRounds) {
+        if (spent) {
           body = "error: this turn's tool budget is spent — answer with what you have";
         } else {
           toolRounds += 1;
           let args = {};
+          let parseFailed = false;
           try {
             // Providers disagree on this: some send a JSON string, some an object.
             const raw = askedCall.arguments;
             args = typeof raw === "object" && raw !== null ? raw : JSON.parse(raw === "" || raw === undefined ? "{}" : raw);
           } catch {
+            parseFailed = true;
             args = {};
           }
           const name = ALLOWED_TOOL_NAMES.has(askedCall.name) ? askedCall.name : "";
-          body = name === "" ? `error: unknown tool ${askedCall.name}` : runTool(repo.root, name, args);
+          body = parseFailed
+            ? // Silent `{}` used to turn a malformed call into "the file is not there".
+              "error: the tool arguments were not valid JSON — repeat the call with a JSON object"
+            : name === ""
+              ? `error: unknown tool ${askedCall.name}`
+              : runTool(repo.root, name, args);
           const subject =
             typeof args.path === "string" ? args.path : typeof args.pattern === "string" ? args.pattern : "";
           // A read that covered 200 of 3200 lines is not the same claim as one that
@@ -736,6 +751,7 @@ async function callModel(
           const span = covered === null ? "" : ` (${covered[1]}-${covered[2]}/${covered[3]})`;
           onDelta?.({
             text,
+            ok: !String(body).startsWith("error:"),
             step: { name, subject: `${subject}${span}` },
             activity: subject === "" ? name : `${name} ${subject}${span}`,
           });
@@ -1123,7 +1139,15 @@ export function apply(ctx, rawConfig = {}) {
         repo: options.repo,
         maxToolRounds: positiveInt(config.maxToolRounds, MAX_TOOL_ROUNDS),
         onDelta: (patch) => {
-          if (typeof patch?.activity === "string" && patch.activity !== "" && used[used.length - 1] !== patch.activity) {
+          // A call that errored, or was refused because the budget was spent, is not
+          // evidence. Recording it in the trail would let a claim rest on a file the
+          // model never saw while the header says it read it.
+          if (
+            patch?.ok !== false &&
+            typeof patch?.activity === "string" &&
+            patch.activity !== "" &&
+            used[used.length - 1] !== patch.activity
+          ) {
             used.push(patch.activity);
           }
           live.progress(callId, patch);
@@ -1140,13 +1164,17 @@ export function apply(ctx, rawConfig = {}) {
       debate.turns.push(turn);
       if (debate.turns.length > MAX_TURNS) debate.turns = debate.turns.slice(-MAX_TURNS);
       debate.pending = null;
+      debate.failed = null;
       saveDebate(config, debate);
       live.settle(callId, { text: turn.text });
       return { debate, turn, route };
     } catch (error) {
       // A failed turn must not leave the debate "pending": `result` would wait
-      // for a reply that is never coming.
+      // for a reply that is never coming. It must also not look like a silence:
+      // without this record the next `result` hands back the previous round as if
+      // it were the answer to the message that never got one.
       debate.pending = null;
+      debate.failed = { route: route.label, at: new Date().toISOString(), message: String(error?.message ?? error) };
       try {
         saveDebate(config, debate);
       } catch {
@@ -1430,6 +1458,20 @@ export function apply(ctx, rawConfig = {}) {
               '(`action:"result"`), or say plainly that it did not reply.',
           };
         }
+        // A turn that died must be reported as itself. Without this the next `result`
+        // hands back the previous round, and a reader cannot tell that the message
+        // it answered was never answered.
+        if (debate.failed !== null && debate.failed !== undefined) {
+          const failed = debate.failed;
+          return {
+            text:
+              `[spar ${id} · failed · ${failed.route}]\n` +
+              `${failed.message}\n\n` +
+              "This turn produced no reply, so the previous round is not the answer to the last message. " +
+              'Retry with `action:"say"` (or reply again), or read the transcript with `action:"show"`.',
+          };
+        }
+
         const last = [...debate.turns].reverse().find((turn) => turn.role !== "left");
         if (last === undefined) {
           return { text: `[spar ${id} · result]\nNothing has been written yet — the turn never started.` };
