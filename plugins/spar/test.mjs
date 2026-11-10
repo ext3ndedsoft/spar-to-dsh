@@ -1,10 +1,12 @@
 // Offline tests for `spar`: a fake ctx + fake llm stream, no network, no quota.
 // Run: node test.mjs
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { apply, __internals } from "./index.js";
 import { runTool } from "./tools.js";
+import { createLiveRegistry } from "./live.js";
 
 let passed = 0;
 let failed = 0;
@@ -804,6 +806,99 @@ const exec = { signal: undefined };
   const result = await tool.execute({ action: "open", topic: "t", async: false, cwd: dir }, exec);
   includes(result.text, "a.txt (1-", "the trail says which lines were actually read");
   cleanup();
+}
+
+// 35. the header counts the lines the byte ceiling actually delivered
+{
+  const { dir, cleanup } = sandboxDir("ceiling");
+  const line = "x".repeat(1000);
+  const body = Array.from({ length: 500 }, () => line).join("\n");
+  writeFileSync(path.join(dir, "big.txt"), body, "utf8");
+
+  const text = __internals.runTool(dir, "read", { path: "big.txt", whole: true });
+  const header = text.split("\n")[0];
+  includes(header, "of 500", "the total is the real line count");
+  if (header.includes("1-500")) throw new Error(`the header claims the whole file: ${header}`);
+  includes(header, "stopped at the 256 KB ceiling", "and says where it stopped");
+  cleanup();
+}
+
+// 36. an empty file is not a one-line file
+{
+  const { dir, cleanup } = sandboxDir("empty");
+  writeFileSync(path.join(dir, "zero.txt"), "", "utf8");
+  const text = __internals.runTool(dir, "read", { path: "zero.txt" });
+  includes(text, "empty file", "an empty file says so instead of claiming line 1");
+  if (text.includes("lines 1-1")) throw new Error(`empty file reported as one line: ${text}`);
+  cleanup();
+}
+
+// 37. `git diff` hands back the change, not a summary of it
+{
+  const { dir, cleanup } = sandboxDir("gitdiff");
+  const git = (args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  git(["init", "-q"]);
+  git(["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "one"]);
+  writeFileSync(path.join(dir, "a.txt"), "hello\n", "utf8");
+  git(["add", "."]);
+  git(["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "two"]);
+  writeFileSync(path.join(dir, "a.txt"), "hello\nworld\n", "utf8");
+
+  const diff = __internals.runTool(dir, "git", { sub: "diff" });
+  includes(diff, "+world", "the default diff shows the added line");
+  const stat = __internals.runTool(dir, "git", { sub: "diff", stat: true });
+  includes(stat, "1 insertion", "`stat: true` gives the summary when asked");
+  cleanup();
+}
+
+// 38. a truncated glob says it is truncated
+{
+  const { dir, cleanup } = sandboxDir("globcut");
+  for (let index = 0; index < 405; index += 1) writeFileSync(path.join(dir, `f${index}.txt`), "x", "utf8");
+  const text = __internals.runTool(dir, "glob", { pattern: "*.txt" });
+  includes(text, "stopped at 400 matches", "a cut list is not passed off as complete");
+  cleanup();
+}
+
+// 39. a later turn still reads the project the debate was opened on
+{
+  const { dir, cleanup } = sandboxDir("pinned");
+  const projectA = path.join(dir, "a");
+  const projectB = path.join(dir, "b");
+  mkdirSync(projectA, { recursive: true });
+  mkdirSync(projectB, { recursive: true });
+  writeFileSync(path.join(projectA, "marker.txt"), "AAAA\n", "utf8");
+  writeFileSync(path.join(projectB, "marker.txt"), "BBBB\n", "utf8");
+
+  let phase = 0;
+  const scripted = () => {
+    phase += 1;
+    // one read per turn, then prose
+    return phase % 2 === 1
+      ? { toolCall: { id: `r${phase}`, name: "read", arguments: JSON.stringify({ path: "marker.txt" }) } }
+      : "готово";
+  };
+  const { tool, calls } = makeHarness({ dir, text: scripted, config: { cwd: projectB } });
+  await tool.execute({ action: "open", topic: "t", cwd: projectA, async: false }, exec);
+  const before = calls.length;
+  await tool.execute({ action: "say", id: "d1", message: "ещё", async: false }, exec);
+  const later = JSON.stringify(calls.slice(before).map((call) => call.messages));
+  includes(later, "AAAA", "the second turn read the debate's project, not the session's");
+  if (later.includes("BBBB")) throw new Error("a later turn read the session directory instead");
+  cleanup();
+}
+
+// 40. a run whose process died is reported as stalled, not as still writing
+{
+  const registry = createLiveRegistry();
+  const state = registry.begin("c1", { id: "d1", role: "reply", route: "p/m", phase: "replying" });
+  if (state === undefined) throw new Error("begin returned nothing");
+  state.at = Date.now() - 5 * 60 * 1000;
+  const read = registry.read("c1");
+  if (read.stalled !== true) throw new Error("a silent run was not marked stalled");
+  if (read.done === true) throw new Error("a silent run must not claim to be done");
+  eq(registry.active().length, 0, "a silent run is not listed as active");
+  eq(registry.newest(), null, "and is not served as the newest live turn");
 }
 
 /* ----------------------------------------------------------------- report -- */

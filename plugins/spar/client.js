@@ -213,6 +213,9 @@ window.__ModuleLoader__.load({
 	font-size: 11.5px;
 	color: var(--dsw-alias-label-tertiary, #8a8a8a);
 }
+[data-spar-status][data-spar-stalled="1"] {
+	color: #f0a45c;
+}
 [data-spar-thinking] {
 	display: inline-flex;
 	align-items: center;
@@ -395,6 +398,8 @@ window.__ModuleLoader__.load({
 		}
 
 		const LIVE_MS = 320;
+		/** Consecutive empty polls before a running card admits it lost the host. */
+		const STALL_AFTER = 12;
 
 		/**
 		 * Reveal the arriving text a frame at a time instead of in the chunks the
@@ -432,20 +437,32 @@ window.__ModuleLoader__.load({
 				if (enabled !== true || typeof callId !== "string" || callId === "") return undefined;
 				let stopped = false;
 				let timer;
+				let misses = 0;
 				const tick = () => {
 					fetch(`/spar-live?call=${encodeURIComponent(callId)}`, { cache: "no-store" })
 						.then((response) => (response.ok ? response.json() : null))
 						.then((value) => {
 							if (stopped) return;
 							if (value !== null && value.missing !== true) {
-								setState(value);
+								misses = 0;
+								setState({ ...value, stalled: false });
 								if (value.done !== true) timer = setTimeout(tick, LIVE_MS);
 							} else {
+								// The registry does not know this call. That is normal for a
+								// moment after the turn starts, and suspicious after a while: a
+								// dead process would otherwise animate "пишет…" forever.
+								misses += 1;
+								// Even before any state arrived: a process that died mid-turn must
+								// surface as a stall, not as an endless "пишет…".
+								setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER }));
 								timer = setTimeout(tick, LIVE_MS * 2);
 							}
 						})
 						.catch(() => {
-							if (!stopped) timer = setTimeout(tick, LIVE_MS * 2);
+							if (stopped) return;
+							misses += 1;
+							setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER }));
+							timer = setTimeout(tick, LIVE_MS * 2);
 						});
 				};
 				tick();
@@ -470,12 +487,18 @@ window.__ModuleLoader__.load({
 			const started = raw.includes("· started]");
 			const running = props.phase === "preparing" || props.phase === "start";
 			const live = useLiveTurn(props.callId, running || started);
-			const streaming = running || (started && live !== null && live.done !== true);
+			// The registry knows more than the tool-call prop: it has the real text and the
+			// real end. A finished turn must not be painted as running, and a turn whose
+			// first poll is still in flight must not be painted as finished.
+			const liveKnown = live !== null && live !== undefined;
+			const liveDone = liveKnown && live.done === true;
+			const working = liveKnown ? !liveDone : running || started;
+			const streaming = working;
 			const smooth = useSmoothText(live?.text ?? "", streaming);
 
 			// A turn is being written: paint it as it grows instead of holding a
 			// spinner for the whole model round.
-			if (running || (started && live !== null && live.done !== true)) {
+			if (working) {
 				const text = live?.text ?? "";
 				const activity = live?.activity ?? "";
 				const steps = Array.isArray(live?.steps) ? live.steps : [];
@@ -533,13 +556,20 @@ window.__ModuleLoader__.load({
 									: null,
 							],
 						}),
-						activity === "" && text === "" && reasoning === "" && steps.length === 0
+						activity === "" && text === "" && reasoning === "" && steps.length === 0 && live?.stalled !== true
 							? null
 							: jsxs("div", {
 									"data-spar-status": "",
+									"data-spar-stalled": live?.stalled === true ? "1" : "0",
 									children: [
-										jsx("span", { "data-spar-dot": "" }),
-										activity === "" ? (text === "" ? "думает…" : "пишет…") : `читает ${activity}`,
+										live?.stalled === true ? null : jsx("span", { "data-spar-dot": "" }),
+										live?.stalled === true
+											? "нет ответа от реестра — ход, возможно, оборвался · проверь action:\"result\""
+											: activity === ""
+												? text === ""
+													? "думает…"
+													: "пишет…"
+												: `читает ${activity}`,
 									],
 								}),
 					],
@@ -753,9 +783,16 @@ window.__ModuleLoader__.load({
 `;
 
 		/** One choice the panel can leave alone: empty value means "profile default". */
-		function modelOptions(models, allowEmpty, emptyLabel) {
+		function modelOptions(models, allowEmpty, emptyLabel, current) {
 			const rows = [];
 			if (allowEmpty) rows.push(jsx("option", { value: "", children: emptyLabel, key: "auto" }));
+			// A value the catalog does not know still exists in settings.json. Without
+			// its own option the browser falls back to the first one, so the panel shows
+			// "как в профиле" while the dead value is what gets saved again.
+			const known = models.some((entry) => entry.label === current);
+			if (typeof current === "string" && current !== "" && current !== "self" && !known) {
+				rows.push(jsx("option", { value: current, children: `${current} · нет в каталоге`, key: "stale" }));
+			}
 			for (const entry of models) {
 				rows.push(
 					jsx("option", {
@@ -911,6 +948,7 @@ window.__ModuleLoader__.load({
 													models,
 													true,
 													`как в профиле · ${effective.opponent ?? "—"}`.replace("как в профиле · —", "не выбран — выбери модель"),
+													draft.opponent ?? "",
 												),
 											}),
 										],
@@ -929,7 +967,7 @@ window.__ModuleLoader__.load({
 														key: "auto",
 													}),
 													jsx("option", { value: "self", children: "я сам (моя модель)", key: "self" }),
-													...modelOptions(models, false, ""),
+													...modelOptions(models, false, "", draft.judge ?? ""),
 												],
 											}),
 										],
@@ -945,6 +983,7 @@ window.__ModuleLoader__.load({
 													models,
 													true,
 													`как в профиле · ${effective.challenger ?? "—"}`.replace("как в профиле · —", "не выбран"),
+													draft.challenger ?? "",
 												),
 											}),
 										],

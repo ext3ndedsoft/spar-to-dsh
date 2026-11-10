@@ -105,12 +105,13 @@ export const TOOL_SCHEMAS = [
 	{
 		name: "git",
 		description:
-			"Read-only git: status, diff, log, ls-files. Use `diff` to see the uncommitted change under discussion.",
+			"Read-only git: status, diff, log, ls-files. `diff` returns the change itself; pass `stat: true` when you only want the file list with line counts.",
 		parameters: {
 			type: "object",
 			properties: {
 				sub: { type: "string", enum: ["status", "diff", "log", "ls-files"], description: "Subcommand." },
 				path: { type: "string", description: "Optional pathspec for diff and log." },
+				stat: { type: "boolean", description: "For `diff`: return `--stat` (names and line counts) instead of the diff body." },
 			},
 			required: ["sub"],
 			additionalProperties: false,
@@ -160,6 +161,13 @@ export function globToRegExp(pattern) {
 
 /** Walk the root breadth-first, skipping noise and denied paths. */
 function* walk(root, limit = MAX_WALK_FILES, options = {}) {
+	const state = options.state;
+	// A walk that stops early owes the caller that fact: a truncated listing and a
+	// complete one are indistinguishable to whoever reads the result, and the next
+	// sentence is usually "nothing there".
+	const stop = () => {
+		if (state !== undefined && state !== null) state.truncated = true;
+	};
 	let seen = 0;
 	const queue = [""];
 	while (queue.length > 0 && seen < limit) {
@@ -180,16 +188,23 @@ function* walk(root, limit = MAX_WALK_FILES, options = {}) {
 				if (options.dirs === true) {
 					seen += 1;
 					yield `${rel}/`;
-					if (seen >= limit) return;
+					if (seen >= limit) {
+						stop();
+						return;
+					}
 				}
 				continue;
 			}
 			if (!entry.isFile() || isDenied(rel)) continue;
 			seen += 1;
 			yield rel;
-			if (seen >= limit) return;
+			if (seen >= limit) {
+				stop();
+				return;
+			}
 		}
 	}
+	if (seen >= limit) stop();
 }
 
 /** Read one bounded, numbered slice of a file, or list a directory. */
@@ -199,7 +214,10 @@ function readRange(root, args) {
 	if (info.isDirectory()) return listDir(absolute, rel);
 	if (!info.isFile()) throw new Error(`${rel} is not a file`);
 	if (info.size > MAX_FILE_BYTES) throw new Error(`${rel} is ${Math.round(info.size / 1024)} KB — too large to read whole; use grep`);
-	const lines = readFileSync(absolute, "utf8").split("\n");
+	const text = readFileSync(absolute, "utf8");
+	// An empty file is not a one-line file: `split` gives [""] and the header then
+	// claims "lines 1-1 of 1", which reads as content where there is none.
+	const lines = text === "" ? [] : text.split("\n");
 	// A trailing newline is not a line: "of 3" for a two-line file misleads a model
 	// that is deciding whether it has seen the whole thing.
 	if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
@@ -212,6 +230,7 @@ function readRange(root, args) {
 	const slice = lines.slice(offset - 1, offset - 1 + limit);
 	let body = "";
 	let used = 0;
+	let emitted = 0;
 	for (let index = 0; index < slice.length; index += 1) {
 		const line = slice[index];
 		if (used + line.length + 1 > MAX_READ_BYTES) {
@@ -219,11 +238,20 @@ function readRange(root, args) {
 			break;
 		}
 		used += line.length + 1;
+		emitted += 1;
 		body += `${offset + index}\t${line}\n`;
 	}
 	const total = lines.length;
-	const last = Math.min(total, offset - 1 + slice.length);
-	return `${rel} · lines ${offset}-${last} of ${total}\n${body}`;
+	if (total === 0) return `${rel} · empty file (0 bytes)\n`;
+	// The header counts what was actually written, not what was asked for: the byte
+	// ceiling can cut the body, and a range that reaches past the body is a lie the
+	// reader has no way to catch.
+	const last = Math.min(total, offset - 1 + emitted);
+	const header =
+		emitted < slice.length
+			? `${rel} · lines ${offset}-${last} of ${total} (stopped at the ${Math.round(MAX_READ_BYTES / 1024)} KB ceiling — ${total - last} lines remain)`
+			: `${rel} · lines ${offset}-${last} of ${total}`;
+	return `${header}\n${body}`;
 }
 
 /**
@@ -261,7 +289,8 @@ function grepRepo(root, args) {
 	const matches = [];
 	let bytes = 0;
 	let scanned = 0;
-	for (const rel of walk(root)) {
+	const walkState = {};
+	for (const rel of walk(root, MAX_WALK_FILES, { state: walkState })) {
 		if (fileFilter !== undefined && !fileFilter.test(rel)) continue;
 		let text;
 		try {
@@ -285,7 +314,9 @@ function grepRepo(root, args) {
 			matches.push(line);
 		}
 	}
-	return matches.length === 0 ? `no match for /${pattern}/ in ${scanned} files` : matches.join("\n");
+	return matches.length === 0
+		? `no match for /${pattern}/ in ${scanned} files${walkState.truncated === true ? ` (the walk stopped after ${MAX_WALK_FILES} entries — this is not a complete search)` : ""}`
+		: matches.join("\n");
 }
 
 /** List paths matching a glob, directories included. */
@@ -294,14 +325,24 @@ function globRepo(root, args) {
 	if (pattern === "") throw new Error("pattern is required");
 	const regex = globToRegExp(pattern);
 	const found = [];
-	for (const rel of walk(root, MAX_WALK_FILES, { dirs: true })) {
+	const state = {};
+	for (const rel of walk(root, MAX_WALK_FILES, { dirs: true, state })) {
 		// Match the bare path so `src/*` also matches the directory `src/driver/`,
 		// then show it with the slash that tells a model it is a folder.
 		const bare = rel.endsWith("/") ? rel.slice(0, -1) : rel;
 		if (regex.test(bare)) found.push(rel);
-		if (found.length >= MAX_GLOB_RESULTS) break;
+		if (found.length >= MAX_GLOB_RESULTS) {
+			state.truncated = true;
+			break;
+		}
 	}
-	return found.length === 0 ? `no paths match ${pattern}` : found.join("\n");
+	const notes = [];
+	if (found.length >= MAX_GLOB_RESULTS) notes.push(`! stopped at ${MAX_GLOB_RESULTS} matches — more paths may match`);
+	else if (state.truncated === true) notes.push(`! the walk stopped after ${MAX_WALK_FILES} entries — this list may be incomplete`);
+	if (found.length === 0) {
+		return `no paths match ${pattern}${state.truncated === true ? ` (the walk stopped after ${MAX_WALK_FILES} entries — this is not a complete search)` : ""}`;
+	}
+	return [...found, ...notes].join("\n");
 }
 
 /** Read-only git through a fixed subcommand set. */
@@ -318,7 +359,11 @@ function gitRepo(root, args) {
 		});
 	let output;
 	if (sub === "status") output = run(["status", "--short", "--branch"]);
-	else if (sub === "diff") output = run(["diff", ...(pathspec === "" ? ["--stat"] : ["--", pathspec])]);
+	else if (sub === "diff")
+		// `--stat` is a summary: a model that asked for the change and got file names
+		// concludes "small diff" from a line count. The full diff is the default; the
+		// summary is opt-in.
+		output = run(["diff", ...(args.stat === true ? ["--stat"] : []), ...(pathspec === "" ? [] : ["--", pathspec])]);
 	else if (sub === "log") output = run(["log", "--oneline", "-n", "20", ...(pathspec === "" ? [] : ["--", pathspec])]);
 	else if (sub === "ls-files") output = run(["ls-files"]);
 	else throw new Error(`unsupported git subcommand: ${sub}`);

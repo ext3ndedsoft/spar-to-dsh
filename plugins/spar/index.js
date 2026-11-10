@@ -1212,6 +1212,14 @@ export function apply(ctx, rawConfig = {}) {
         typeof args?.cwd === "string" && args.cwd.trim() !== ""
           ? repoFor({ ...config, cwd: args.cwd }, exec)
           : repoFor(config, exec);
+      /**
+       * The project a debate argues about is pinned to the debate. A later turn must
+       * not inherit the caller's current directory: a session that moved on would turn
+       * the opponent's reads into "no such file" while its claim about the code stands,
+       * and the transcript would look like a bad argument instead of a broken reader.
+       */
+      const repoOf = (debate) =>
+        typeof debate?.cwd === "string" && debate.cwd !== "" ? repoFor({ ...config, cwd: debate.cwd }, exec) : repo;
 
       /**
        * Run a turn now, or hand it to the background unless the caller asked to
@@ -1307,7 +1315,7 @@ export function apply(ctx, rawConfig = {}) {
         return start(id, debate.right, "reply", () =>
           guard(id, async () => {
             debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString() });
-            const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, repo });
+            const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
             return { text: `${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}` };
           }),
         );
@@ -1349,12 +1357,12 @@ export function apply(ctx, rawConfig = {}) {
             // they run at the same time: a two-model round costs one round, not two.
             if (round === 0) {
               await Promise.all([
-                runTurn(debate, "left", "", { maxTokens: args?.maxTokens, signal, callId, repo }),
-                runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId, repo }),
+                runTurn(debate, "left", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) }),
+                runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) }),
               ]);
             } else {
-              await runTurn(debate, "left", "", { maxTokens: args?.maxTokens, signal, callId, repo });
-              await runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId, repo });
+              await runTurn(debate, "left", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
+              await runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
             }
           }
           const transcript = debate.turns

@@ -11,6 +11,8 @@
  */
 
 const KEEP_MS = 10 * 60 * 1000;
+/** A turn that has not touched its entry for this long is not writing any more. */
+const IDLE_MS = 4 * 60 * 1000;
 const MAX_REASONING_CHARS = 4000;
 const MAX_STEPS = 16;
 
@@ -88,6 +90,11 @@ export function createLiveRegistry() {
       prune();
       const state = runs.get(callId);
       if (state === undefined) return null;
+      // A process can die after `begin` and before `settle`. Its entry then says
+      // "not done" forever, and the card keeps animating a turn that is not being
+      // written. Silence past the idle window is reported as a stall, not as motion.
+      const idle = state.done !== true && Date.now() - state.at > IDLE_MS;
+      if (idle) state.stalled = true;
       return {
         call: state.call,
         id: state.id,
@@ -101,19 +108,26 @@ export function createLiveRegistry() {
         reasoning: state.reasoning,
         steps: state.steps,
         done: state.done,
+        stalled: state.stalled === true,
         error: state.error,
       };
     },
     /** Everything still running, for a client that lost its call id. */
     active() {
       prune();
-      return [...runs.values()].filter((state) => state.done !== true).map((state) => this.read(state.call));
+      // Not "everything unfinished": an entry whose process died is unfinished and
+      // silent, and listing it as active would tell a reader a turn is running.
+      return [...runs.values()]
+        .filter((state) => state.done !== true && Date.now() - state.at <= IDLE_MS)
+        .map((state) => this.read(state.call));
     },
-    /** The most recent turn, running or just finished. */
+    /** The most recent turn that is still being written; finished ones need the id. */
     newest() {
       prune();
       let best = null;
       for (const state of runs.values()) {
+        if (state.done === true) continue;
+        if (Date.now() - state.at > IDLE_MS) continue;
         if (best === null || state.startedAt >= best.startedAt) best = state;
       }
       return best === null ? null : this.read(best.call);
