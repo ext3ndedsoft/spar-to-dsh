@@ -1,0 +1,34 @@
+{
+  "name": "dsh-plugin-spar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A second model that argues back: adversarial debates between the calling agent and another provider route, judged in a clean context and rendered as its own voice in the web client",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "scripts": {
+    "test": "node test.mjs",
+    "smoke": "node smoke-client.cjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "debate",
+    "llm"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ext3ndedsoft/spar-to-dsh.git"
+  },
+  "homepage": "https://github.com/ext3ndedsoft/spar-to-dsh#readme"
+}

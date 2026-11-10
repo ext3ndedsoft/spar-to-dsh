@@ -1,0 +1,17 @@
+# Installed packages. Rebuilt from package.json, never reviewed as source.
+node_modules/
+
+# Runtime state. `~/.dsh/spar` lives outside the repo, but a copied profile can put
+# transcripts and the settings file next to the source, and both are private: they
+# hold prompts, model replies and the paths a debate read.
+spar/*.json
+spar/settings.json
+d*.json
+
+# Logs.
+*.log
+
+# Editor and OS artefacts.
+.DS_Store
+Thumbs.db
+*.bak
