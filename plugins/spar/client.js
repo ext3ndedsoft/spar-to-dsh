@@ -441,6 +441,14 @@ window.__ModuleLoader__.load({
 				let timer;
 				let misses = 0;
 				const startedAt = Date.now();
+				// One timer at a time, always. Two `setTimeout` calls in one branch double
+				// the polling on every miss and the tab then reports thousands of requests
+				// per second — the page stops accepting input. Clearing first makes a
+				// duplicate schedule harmless instead of exponential.
+				const schedule = (ms) => {
+					if (timer !== undefined) clearTimeout(timer);
+					timer = setTimeout(tick, ms);
+				};
 				const tick = () => {
 					fetch(`/spar-live?call=${encodeURIComponent(callId)}`, { cache: "no-store" })
 						.then((response) => (response.ok ? response.json() : null))
@@ -449,26 +457,26 @@ window.__ModuleLoader__.load({
 							if (value !== null && value.missing !== true) {
 								misses = 0;
 								setState({ ...value, stalled: false });
-								if (value.done !== true) timer = setTimeout(tick, LIVE_MS);
+								if (value.done !== true) schedule(LIVE_MS);
 							} else {
 								// The registry does not know this call. That is normal for a
 								// moment after the turn starts, and suspicious after a while: a
 								// dead process would otherwise animate "пишет…" forever.
 								misses += 1;
-								// A cold first call can take ten seconds before the host registers anything:
-// twelve polls of 640 ms declared a stall on a turn that had not started writing
-// yet, which is where "нет ответа от реестра" at the beginning came from.
+								// A cold first call can take ten seconds before the host
+								// registers anything: twelve polls of 640 ms declared a stall on
+								// a turn that had not started writing yet, which is where "нет
+								// ответа от реестра" at the beginning came from.
 								const waited = Date.now() - startedAt;
 								setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER && waited > STALL_FLOOR_MS }));
-								timer = setTimeout(tick, LIVE_MS * 2);
-								timer = setTimeout(tick, LIVE_MS * 2);
+								schedule(LIVE_MS * 2);
 							}
 						})
 						.catch(() => {
 							if (stopped) return;
 							misses += 1;
 							setState((previous) => ({ ...(previous ?? {}), stalled: misses >= STALL_AFTER && Date.now() - startedAt > STALL_FLOOR_MS }));
-							timer = setTimeout(tick, LIVE_MS * 2);
+							schedule(LIVE_MS * 2);
 						});
 				};
 				tick();

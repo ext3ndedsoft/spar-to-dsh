@@ -199,3 +199,14 @@ for (const [label, props, expect] of cases) {
   console.log(`${label}: ok — ${text.slice(0, 110)}`);
 }
 console.log("all card states render");
+
+// Exactly one polling loop may be scheduled per tick. A duplicated `setTimeout`
+// in one branch doubles the poll rate on every miss, the tab then spams thousands
+// of requests a second, and the page stops accepting input — which is a whole
+// session of "не могу отправить промпт" from a two-line slip.
+{
+  const source = fs.readFileSync("client.js", "utf8");
+  const schedulers = source.match(/setTimeout\(\s*tick/g) ?? [];
+  if (schedulers.length !== 1) throw new Error(`client.js schedules its poll from ${schedulers.length} places; every tick must go through schedule()`);
+  console.log("one poll scheduler: ok");
+}
