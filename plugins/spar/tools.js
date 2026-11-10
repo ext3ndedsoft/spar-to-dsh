@@ -127,7 +127,7 @@ export const TOOL_SCHEMAS = [
 	{
 		name: "run",
 		description:
-			"Run the project's own tests and get the exit code plus the tail of the output. This is the one tool that executes code: it runs a known test runner (npm/pnpm/yarn test, pytest, cargo test, go test, make test, dotnet test, gradle, vitest/jest) in the project root with no shell. `what: \"list\"` shows the runners it found and why; `what: \"tests\"` runs the first one; `command` runs one you name, first token must be a known runner. A suite can do anything the project could, including delete files — it is not a sandbox.",
+			"Run the project's own tests and get the exit code plus the tail of the output. This is the one tool that executes code: it runs a known test runner (npm/pnpm/yarn test, pytest, cargo test, go test, make test, dotnet test, gradle, vitest/jest) in the project root with no shell. `what: \"list\"` shows the runners it found and why; `what: \"tests\"` runs the first one; `command` runs one you name, first token must be a known runner. Every side of a debate can call it. A suite can do anything the project could, including delete files — it is not a sandbox, so run it when a claim about tests is worth settling and not to explore.",
 		parameters: {
 			type: "object",
 			properties: {

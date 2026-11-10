@@ -985,15 +985,24 @@ const exec = { signal: undefined };
   cleanup();
 }
 
-// 46. debaters cannot run the suite; the arbiter can
+// 46. a debater can run the project's own suite
 {
-  const { dir, cleanup } = sandboxDir("judgeonly");
-  writeFileSync(path.join(dir, "a.txt"), "x\n", "utf8");
-  const { tool, calls } = makeHarness({ dir });
-  await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
-  const debaterTools = JSON.stringify(calls[0].tools ?? []);
-  if (debaterTools.includes('"name":"run"')) throw new Error("the debater was offered `run`");
-  includes(debaterTools, '"name":"read"', "the debater still reads the project");
+  const { dir, cleanup } = sandboxDir("debaterrun");
+  writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "probe", scripts: { test: 'node -e "console.log(\'debater ran it\')"' } }),
+    "utf8",
+  );
+  let phase = 0;
+  const scripted = () => {
+    phase += 1;
+    return phase === 1 ? { toolCall: { name: "run", arguments: JSON.stringify({ what: "tests" }) } } : "готово";
+  };
+  const { tool, calls } = makeHarness({ dir, text: scripted });
+  const result = await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
+  includes(JSON.stringify(calls[0].tools ?? []), '"name":"run"', "the debater is offered `run`");
+  const fed = JSON.stringify(calls[calls.length - 1].messages ?? "");
+  includes(fed, "debater ran it", "and its call actually executes the suite");
   cleanup();
 }
 

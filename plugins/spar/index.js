@@ -45,14 +45,6 @@ export const name = "spar";
  *  without any model route still loads this plugin and reports a clear error. */
 export const inject = ["tools"];
 
-/**
- * Debaters read the project; the arbiter may also run its tests. The split is
- * deliberate: "the tests pass" is a claim only a verdict should be able to check,
- * and starting a suite means running the project's own code.
- */
-const DEBATER_SCHEMAS = TOOL_SCHEMAS.filter((schema) => schema.name !== "run");
-const DEBATER_TOOL_NAMES = new Set(DEBATER_SCHEMAS.map((schema) => schema.name));
-
 /** Per-turn ceiling on tool calls and on the bytes they drag into the transcript. */
 const MAX_TOOL_ROUNDS = 3;
 /**
@@ -478,6 +470,7 @@ function systemFor(debate, side, config) {
     "- End with one observation or test that would settle the disagreement.",
     "- When a claim is about a whole file, read it with `whole: true`. A 200-line slice does not support a statement about the file, and a line-number citation taken from a slice proves less than it looks.",
     "- When a claim is about tests, run them: `run` executes the project's own suite and returns the exit code. \"The tests pass\" is checkable, and checking it is cheaper than weighing who sounds sure.",
+    "- When a claim in this debate is about tests passing, failing or missing, `run` executes the project's own suite and returns the exit code. Buy the result instead of arguing about it.",
     "- If you could not read something you needed, say which part and why. Never infer what unread code probably does and present it as a finding.",
     "- 150-350 words. Prose only: no headings, no bullet lists longer than three items, no summary paragraphs.",
     "- Answer in the language the exchange is written in; keep code, identifiers, and quoted text unchanged.",
@@ -630,7 +623,7 @@ async function callModel(
   route,
   system,
   prompt,
-  { maxTokens, temperature, timeoutMs, signal, repo, maxToolRounds = MAX_TOOL_ROUNDS, onDelta, schemas, allowedToolNames },
+  { maxTokens, temperature, timeoutMs, signal, repo, maxToolRounds = MAX_TOOL_ROUNDS, onDelta },
 ) {
   const llm = resolveLlm(ctx);
   if (llm === undefined) {
@@ -694,9 +687,7 @@ async function callModel(
       // The arbiter runs tests; the debaters read. A debater that can start the suite
 // can also make the project's own code run on its behalf mid-argument, and a
 // verdict is the only place where "the tests pass" is worth anything.
-      const allowedSchemas = schemas ?? TOOL_SCHEMAS;
-      const allowedNames = allowedToolNames ?? ALLOWED_TOOL_NAMES;
-      const roundTools = usesTools && !spent ? allowedSchemas : undefined;
+      const roundTools = usesTools && !spent ? TOOL_SCHEMAS : undefined;
       const stream = call.stream({
         ...call.config,
         system,
@@ -771,7 +762,7 @@ async function callModel(
             parseFailed = true;
             args = {};
           }
-          const name = allowedNames.has(askedCall.name) ? askedCall.name : "";
+          const name = ALLOWED_TOOL_NAMES.has(askedCall.name) ? askedCall.name : "";
           body = parseFailed
             ? // Silent `{}` used to turn a malformed call into "the file is not there".
               "error: the tool arguments were not valid JSON — repeat the call with a JSON object"
@@ -1174,8 +1165,6 @@ export function apply(ctx, rawConfig = {}) {
         signal: options.signal,
         repo: options.repo,
         maxToolRounds: positiveInt(config.maxToolRounds, MAX_TOOL_ROUNDS),
-        schemas: DEBATER_SCHEMAS,
-        allowedToolNames: DEBATER_TOOL_NAMES,
         onDelta: (patch) => {
           // A call that errored, or was refused because the budget was spent, is not
           // evidence. Recording it in the trail would let a claim rest on a file the
