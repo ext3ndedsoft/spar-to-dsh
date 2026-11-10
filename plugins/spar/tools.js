@@ -1,5 +1,5 @@
 /**
- * Read-only repository tools for the debaters.
+ * Repository tools for the debaters.
  *
  * The point is that an opponent reads the project itself instead of accepting
  * the caller's paraphrase of it: the caller passes a root and a question, and
@@ -7,13 +7,20 @@
  * bytes, and the time — because a debate turn that wanders through the repo is
  * worse than one that admits it does not know.
  *
- * Nothing in this module writes, executes, or leaves the root: paths are jailed
- * to the root, secrets are denied by name, and `git` only runs a fixed
- * subcommand set through execFile (never a shell string).
+ * `read`/`grep`/`glob`/`git` write nothing and leave nothing: paths are jailed to
+ * the root, secrets are denied by name, and `git` runs a fixed subcommand set
+ * through execFile (never a shell string).
+ *
+ * `run` is the exception on purpose. A verdict that says "this is untested" or
+ * "the tests pass" is worth nothing if the arbiter cannot run them, so this tool
+ * executes the project's *own* test command — which means executing project code,
+ * with whatever that implies: a suite can delete files or open a socket. The
+ * guard is a closed list of known test runners and no shell anywhere; the guard is
+ * not a sandbox, and the tool description says so.
  */
 
-import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 /** Paths that are never evidence: credentials, keys, and the git config. */
@@ -117,6 +124,20 @@ export const TOOL_SCHEMAS = [
 			additionalProperties: false,
 		},
 	},
+	{
+		name: "run",
+		description:
+			"Run the project's own tests and get the exit code plus the tail of the output. This is the one tool that executes code: it runs a known test runner (npm/pnpm/yarn test, pytest, cargo test, go test, make test, dotnet test, gradle, vitest/jest) in the project root with no shell. `what: \"list\"` shows the runners it found and why; `what: \"tests\"` runs the first one; `command` runs one you name, first token must be a known runner. A suite can do anything the project could, including delete files — it is not a sandbox.",
+		parameters: {
+			type: "object",
+			properties: {
+				what: { type: "string", enum: ["list", "tests"], description: "`list` to see candidates, `tests` to run the first one. Defaults to list." },
+				command: { type: "string", description: 'Explicit command, e.g. "npm test -- --runInBand". First token must be a known runner; no shell metacharacters.' },
+				timeoutMs: { type: "number", description: "Kill after this many milliseconds. Defaults to 120000, capped at 600000." },
+			},
+			additionalProperties: false,
+		},
+	},
 ];
 
 /** Whether a repository-relative path is allowed to be shown to a debater. */
@@ -140,6 +161,19 @@ export function jailPath(root, candidate) {
 	if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) throw new Error(`path escapes the debate root: ${text}`);
 	const portable = rel.split(sep).join("/");
 	if (isDenied(portable)) throw new Error(`path is denied by policy: ${text}`);
+	// `resolve` is lexical: a symlink inside the root still points wherever it
+	// points, so `read` would happily follow it out of the project. The link itself
+	// is not evidence, and neither is what it opens.
+	try {
+		const realRoot = realpathSync(root);
+		const realTarget = realpathSync(absolute);
+		const realRel = relative(realRoot, realTarget);
+		if (realRel.startsWith("..") || isAbsolute(realRel)) {
+			throw new Error(`path escapes the debate root through a link: ${text}`);
+		}
+	} catch (error) {
+		if (error?.code !== "ENOENT" && error?.code !== "ENOTDIR") throw error;
+	}
 	return { absolute, relative: portable };
 }
 
@@ -214,7 +248,12 @@ function readRange(root, args) {
 	if (info.isDirectory()) return listDir(absolute, rel);
 	if (!info.isFile()) throw new Error(`${rel} is not a file`);
 	if (info.size > MAX_FILE_BYTES) throw new Error(`${rel} is ${Math.round(info.size / 1024)} KB — too large to read whole; use grep`);
-	const text = readFileSync(absolute, "utf8");
+	const bytes = readFileSync(absolute);
+	// A compiled artefact, a font, or a tarball decodes to broken UTF-8 and lands in
+	// the transcript as noise the model then argues about. `grep` already refuses
+	// binary; `read` said nothing and returned garbage.
+	if (bytes.includes(0)) throw new Error(`${rel} looks binary (a NUL byte in the first ${Math.min(bytes.length, 8192)} bytes) — not readable as text`);
+	const text = bytes.toString("utf8");
 	// An empty file is not a one-line file: `split` gives [""] and the header then
 	// claims "lines 1-1 of 1", which reads as content where there is none.
 	const lines = text === "" ? [] : text.split("\n");
@@ -379,16 +418,182 @@ function gitRepo(root, args) {
  * @param args - parsed arguments; malformed shapes are rejected by the caller.
  * @returns the tool message body, or an error string prefixed with `error:`.
  */
+/**
+ * Test runners this tool is willing to start. A closed list, not a sandbox: the
+ * project's suite runs with the project's power. Keeping the list short means a
+ * model cannot turn "run the tests" into "run anything".
+ */
+const TEST_BINS = new Set([
+	"npm", "npx", "pnpm", "yarn", "bun", "deno", "node",
+	"pytest", "python", "python3", "py",
+	"cargo", "go", "make", "dotnet", "mvn", "gradle", "./gradlew", "./mvnw",
+	"php", "composer", "bundle", "rspec", "mix", "swift",
+]);
+
+const hasFile = (root, rel) => existsSync(join(root, rel));
+
+function readJsonFile(file) {
+	try {
+		return JSON.parse(readFileSync(file, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
+/** What test commands does this project actually have? Order is preference. */
+export function detectRunners(root) {
+	const found = [];
+	const pkg = hasFile(root, "package.json") ? readJsonFile(join(root, "package.json")) : null;
+	if (pkg !== null) {
+		const scripts = pkg.scripts ?? {};
+		const key = ["test", "test:unit", "test:ci", "tests"].find((name) => typeof scripts[name] === "string");
+		const manager = hasFile(root, "pnpm-lock.yaml") ? "pnpm" : hasFile(root, "yarn.lock") ? "yarn" : hasFile(root, "bun.lockb") ? "bun" : "npm";
+		if (key !== undefined) {
+			found.push({
+				label: key === "test" ? `${manager} test` : `${manager} run ${key}`,
+				bin: manager,
+				args: key === "test" ? ["test"] : ["run", key],
+				source: `package.json scripts.${key}`,
+			});
+		} else if (["vitest.config.ts", "vitest.config.js", "vitest.config.mjs"].some((rel) => hasFile(root, rel))) {
+			found.push({ label: "vitest", bin: "npx", args: ["vitest", "run"], source: "vitest config, no test script" });
+		} else if (["jest.config.js", "jest.config.ts", "jest.config.cjs"].some((rel) => hasFile(root, rel))) {
+			found.push({ label: "jest", bin: "npx", args: ["jest", "--ci"], source: "jest config, no test script" });
+		}
+	}
+	const makefile = hasFile(root, "Makefile") ? readFileSync(join(root, "Makefile"), "utf8") : "";
+	if (/^test:/m.test(makefile)) found.push({ label: "make test", bin: "make", args: ["test"], source: "Makefile test: target" });
+	if (["pytest.ini", "tox.ini", "conftest.py", "pyproject.toml"].some((rel) => hasFile(root, rel))) {
+		found.push({ label: "pytest", bin: "python", args: ["-m", "pytest", "-q"], source: "pytest config in the root" });
+	}
+	if (hasFile(root, "Cargo.toml")) found.push({ label: "cargo test", bin: "cargo", args: ["test", "-q"], source: "Cargo.toml" });
+	if (hasFile(root, "go.mod")) found.push({ label: "go test", bin: "go", args: ["test", "./..."], source: "go.mod" });
+	if (hasFile(root, "pom.xml")) found.push({ label: "mvn test", bin: "mvn", args: ["-q", "test"], source: "pom.xml" });
+	if (hasFile(root, "build.gradle") || hasFile(root, "build.gradle.kts")) {
+		const wrapper = hasFile(root, "gradlew") || hasFile(root, "gradlew.bat");
+		found.push({ label: "gradle test", bin: wrapper ? "./gradlew" : "gradle", args: ["test", "--console=plain"], source: "gradle build file" });
+	}
+	if (hasFile(root, "composer.json")) found.push({ label: "composer test", bin: "composer", args: ["test"], source: "composer.json" });
+	const csproj = (() => {
+		try {
+			return readdirSync(root).some((name) => name.endsWith(".sln") || name.endsWith(".csproj"));
+		} catch {
+			return false;
+		}
+	})();
+	if (csproj) found.push({ label: "dotnet test", bin: "dotnet", args: ["test", "--nologo", "-v", "q"], source: "solution or project file in the root" });
+	return found;
+}
+
+/** Split a command line into argv without a shell, and check it starts with a runner. */
+export function parseRunCommand(line) {
+	if (/[;&|<>$`\n\r]/.test(line)) throw new Error('spar run: shell metacharacters are not accepted — pass the runner and its arguments only');
+	const tokens = [];
+	let current = "";
+	let quote = "";
+	for (const char of line.trim()) {
+		if (quote !== "") {
+			if (char === quote) quote = "";
+			else current += char;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			continue;
+		}
+		if (/\s/.test(char)) {
+			if (current !== "") tokens.push(current);
+			current = "";
+			continue;
+		}
+		current += char;
+	}
+	if (current !== "") tokens.push(current);
+	if (tokens.length === 0) throw new Error("spar run: empty command");
+	const bin = tokens[0];
+	const bare = bin.replace(/^\.\//, "");
+	if (!TEST_BINS.has(bin) && !TEST_BINS.has(bare)) {
+		throw new Error(`spar run: "${bin}" is not a known test runner. Allowed: ${[...TEST_BINS].join(", ")}`);
+	}
+	return { bin, args: tokens.slice(1) };
+}
+
+export function runTests(root, runner, timeoutMs) {
+	const isWin = process.platform === "win32";
+	// Windows refuses to start a `.cmd` shim without a shell (EINVAL since the
+	// CVE fix in Node 20). The shell is therefore required — and it is why the argv
+	// above is either from a closed list or already checked for metacharacters.
+	const quoted = runner.args.map((token) => `"${String(token).replace(/"/g, '\\"')}"`).join(" ");
+	const started = Date.now();
+	const result = isWin
+		? spawnSync(`${runner.bin}${quoted === "" ? "" : ` ${quoted}`}`, {
+				cwd: root,
+				timeout: timeoutMs,
+				encoding: "utf8",
+				maxBuffer: 4 * 1024 * 1024,
+				windowsHide: true,
+				shell: true,
+				env: { ...process.env, CI: "1", NO_COLOR: "1", FORCE_COLOR: "0" },
+			})
+		: spawnSync(runner.bin, runner.args, {
+				cwd: root,
+				timeout: timeoutMs,
+				encoding: "utf8",
+				maxBuffer: 4 * 1024 * 1024,
+				windowsHide: true,
+				shell: false,
+				env: { ...process.env, CI: "1", NO_COLOR: "1", FORCE_COLOR: "0" },
+			});
+	const ms = Date.now() - started;
+	const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+	if (result.error?.code === "ENOENT" || /is not recognized as an internal|command not found/i.test(out)) {
+		return `[run · ${runner.label} · not installed]\n${runner.bin} is not on PATH, so nothing was run.`;
+	}
+	const timedOut = result.error?.code === "ETIMEDOUT";
+	const head = timedOut
+		? `[run · ${runner.label} · timed out after ${Math.round(timeoutMs / 1000)}s · ${(ms / 1000).toFixed(1)}s · via ${runner.source}]`
+		: `[run · ${runner.label} · exit ${result.status} · ${(ms / 1000).toFixed(1)}s · via ${runner.source}]`;
+	const trimmed = out.trim();
+	if (trimmed === "") return `${head}\n(no output)`;
+	const tail = trimmed.length > 6000 ? `… (${trimmed.length - 6000} characters cut from the top)\n${trimmed.slice(-6000)}` : trimmed;
+	return `${head}\n${tail}`;
+}
+
 export function runTool(root, name, args) {
 	try {
 		if (name === "read") return readRange(root, args ?? {});
 		if (name === "grep") return grepRepo(root, args ?? {});
 		if (name === "glob") return globRepo(root, args ?? {});
 		if (name === "git") return gitRepo(root, args ?? {});
+		if (name === "run") return runProject(root, args ?? {});
 		return `error: unknown tool ${name}`;
 	} catch (error) {
 		return `error: ${error?.message ?? String(error)}`;
 	}
+}
+
+function runProject(root, args) {
+	const timeoutMs = Math.min(600_000, Math.max(1_000, Math.trunc(Number(args.timeoutMs) || 120_000)));
+	if (typeof args.command === "string" && args.command.trim() !== "") {
+		const { bin, args: argv } = parseRunCommand(args.command);
+		return runTests(root, { label: `${bin} ${argv.join(" ")}`.trim(), bin, args: argv, source: "named by the caller" }, timeoutMs);
+	}
+	const runners = detectRunners(root);
+	if (runners.length === 0) {
+		return (
+			"no test runner found in this project: looked at package.json scripts.test, vitest/jest config, Makefile test:, pytest config, Cargo.toml, go.mod, pom.xml, gradle, composer.json, and *.sln/*.csproj. " +
+			"That is a finding about the project, not an error — say that it has no discoverable suite, and name what you checked."
+		);
+	}
+	if (args.what !== "tests") {
+		return [
+			`${runners.length} test runner(s) found:`,
+			...runners.map((runner, index) => `${index + 1}. ${runner.label} — ${runner.bin} ${runner.args.join(" ")} · ${runner.source}`),
+			'',
+			'call `run` with `what: "tests"` to execute the first one, or pass `command` for a specific runner.',
+		].join("\n");
+	}
+	return runTests(root, runners[0], timeoutMs);
 }
 
 /** Names a debater may call; anything else is refused before execution. */

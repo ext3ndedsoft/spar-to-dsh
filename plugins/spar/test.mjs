@@ -1,6 +1,6 @@
 // Offline tests for `spar`: a fake ctx + fake llm stream, no network, no quota.
 // Run: node test.mjs
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -946,6 +946,77 @@ const exec = { signal: undefined };
   );
   includes(result.text, "kimi", "the named side is the one that argues FOR");
   includes(result.text, "deepseek", "and challenger takes the other corner");
+  cleanup();
+}
+
+// 44. the project's own suite is discovered and run
+{
+  const { dir, cleanup } = sandboxDir("runner");
+  writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "probe", scripts: { test: 'node -e "console.log(\'suite ok\'); process.exit(0)"' } }),
+    "utf8",
+  );
+  const list = __internals.runTool(dir, "run", {});
+  includes(list, "npm test", "the script in package.json is offered");
+  const ran = __internals.runTool(dir, "run", { what: "tests" });
+  includes(ran, "exit 0", "and the suite runs with its exit code");
+  includes(ran, "suite ok", "with the output kept");
+
+  writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "probe", scripts: { test: 'node -e "console.error(\'boom\'); process.exit(3)"' } }),
+    "utf8",
+  );
+  const failed = __internals.runTool(dir, "run", { what: "tests" });
+  includes(failed, "exit 3", "a failing suite is reported as failing");
+  cleanup();
+}
+
+// 45. `run` refuses anything that is not a test runner, and refuses a shell
+{
+  const { dir, cleanup } = sandboxDir("runrefuse");
+  const curl = __internals.runTool(dir, "run", { command: "curl http://127.0.0.1:1" });
+  includes(curl, "not a known test runner", "an arbitrary binary is refused");
+  const shell = __internals.runTool(dir, "run", { command: "npm test; rm -rf /" });
+  includes(shell, "shell metacharacters", "a shell string is refused");
+  const empty = __internals.runTool(dir, "run", { what: "tests" });
+  includes(empty, "no test runner found", "an empty project says so instead of guessing");
+  cleanup();
+}
+
+// 46. debaters cannot run the suite; the arbiter can
+{
+  const { dir, cleanup } = sandboxDir("judgeonly");
+  writeFileSync(path.join(dir, "a.txt"), "x\n", "utf8");
+  const { tool, calls } = makeHarness({ dir });
+  await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
+  const debaterTools = JSON.stringify(calls[0].tools ?? []);
+  if (debaterTools.includes('"name":"run"')) throw new Error("the debater was offered `run`");
+  includes(debaterTools, '"name":"read"', "the debater still reads the project");
+  cleanup();
+}
+
+// 47. a symlink out of the root is refused, and a binary file is not text
+{
+  const { dir, cleanup } = sandboxDir("escape");
+  const outsideDir = path.join(dir, "..", `outside-${Date.now()}`);
+  mkdirSync(outsideDir, { recursive: true });
+  writeFileSync(path.join(outsideDir, "notes.txt"), "OUTSIDE\n", "utf8");
+  const project = path.join(dir, "project");
+  mkdirSync(project, { recursive: true });
+  try {
+    // A junction works without elevation on Windows; a file symlink does not.
+    symlinkSync(outsideDir, path.join(project, "junc"), "junction");
+    const escaped = __internals.runTool(project, "read", { path: "junc/notes.txt" });
+    includes(escaped, "escapes the debate root", "a link out of the project is refused");
+    if (escaped.includes("OUTSIDE")) throw new Error("the link was followed out of the root");
+  } catch (error) {
+    if (error?.code !== "EPERM" && error?.code !== "EACCES") throw error;
+  }
+  writeFileSync(path.join(project, "blob.bin"), Buffer.from([0x00, 0x01, 0x02, 0x41]));
+  includes(__internals.runTool(project, "read", { path: "blob.bin" }), "looks binary", "binary is refused instead of decoded as text");
+  rmSync(outsideDir, { recursive: true, force: true });
   cleanup();
 }
 
