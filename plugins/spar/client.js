@@ -517,7 +517,16 @@ window.__ModuleLoader__.load({
 									"data-spar-name": "",
 									children: modelOf(live?.route) || "вторая модель",
 								}),
-								jsx("span", { "data-spar-tag": "", children: live?.phase === "verdict" ? "приговор" : "пишет" }),
+								jsx("span", {
+									"data-spar-tag": "",
+									"data-spar-stalled": live?.stalled === true ? "1" : "0",
+									children:
+										live?.stalled === true
+											? "нет ответа"
+											: live?.phase === "verdict"
+												? "приговор"
+												: "пишет",
+								}),
 								live === null || typeof live.ms !== "number"
 									? null
 									: jsx("span", { "data-spar-meta": "", children: `${(live.ms / 1000).toFixed(1)}s` }),
@@ -551,7 +560,7 @@ window.__ModuleLoader__.load({
 									? null
 									: jsx("div", { "data-spar-reason": "", children: reasoning }),
 								text === "" ? null : jsx(Body, { text: smooth }),
-								text === "" && reasoning === "" && steps.length === 0
+								text === "" && reasoning === "" && steps.length === 0 && live?.stalled !== true
 									? jsx("div", { "data-spar-quiet": "", children: "думает…" })
 									: null,
 							],

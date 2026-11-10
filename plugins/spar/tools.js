@@ -29,7 +29,11 @@ const DENIED = [
 	/(^|[\\/])\.git[\\/]config$/i,
 	/(^|[\\/])(id_rsa|id_ed25519|id_ecdsa)(\.pub)?$/i,
 	/(^|[\\/])[^\\/]*\.(pem|key|p12|pfx|jks|keystore)$/i,
-	/(^|[\\/])(secrets?|credentials?|tokens?)(\.[a-z0-9]+)?$/i,
+	// `tokens.ts` is a lexer, not a secret. Denying the bare stem hides ordinary
+	// source and then reports "no match" as if the file did not exist; keep the
+	// stem only for the shapes that actually hold credentials.
+	/(^|[\\/])(secrets?|credentials?)(\.[a-z0-9]+)?$/i,
+	/(^|[\\/])tokens?\.(json|ya?ml|ini|toml|txt|env|cfg|conf)$/i,
 	/(^|[\\/])\.ssh([\\/]|$)/i,
 	/(^|[\\/])\.aws([\\/]|$)/i,
 	/(^|[\\/])\.npmrc$/i,
@@ -398,11 +402,19 @@ function gitRepo(root, args) {
 		});
 	let output;
 	if (sub === "status") output = run(["status", "--short", "--branch"]);
-	else if (sub === "diff")
-		// `--stat` is a summary: a model that asked for the change and got file names
-		// concludes "small diff" from a line count. The full diff is the default; the
-		// summary is opt-in.
-		output = run(["diff", ...(args.stat === true ? ["--stat"] : []), ...(pathspec === "" ? [] : ["--", pathspec])]);
+	else if (sub === "diff") {
+		// `git diff` alone shows unstaged work only: a caller that ran `git add`
+		// gets "nothing to show" and the model concludes nothing changed. Both
+		// halves are reported, and each half says which one it is.
+		const flags = args.stat === true ? ["--stat"] : [];
+		const tail = pathspec === "" ? [] : ["--", pathspec];
+		const staged = run(["diff", "--cached", ...flags, ...tail]);
+		const unstaged = run(["diff", ...flags, ...tail]);
+		const parts = [];
+		if (staged.trim() !== "") parts.push(`staged:\n${staged}`);
+		if (unstaged.trim() !== "") parts.push(`unstaged:\n${unstaged}`);
+		output = parts.length === 0 ? "" : parts.join("\n");
+	}
 	else if (sub === "log") output = run(["log", "--oneline", "-n", "20", ...(pathspec === "" ? [] : ["--", pathspec])]);
 	else if (sub === "ls-files") output = run(["ls-files"]);
 	else throw new Error(`unsupported git subcommand: ${sub}`);

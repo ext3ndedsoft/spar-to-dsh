@@ -84,7 +84,7 @@ const DEFAULTS = {
   // caller's summary of it. Off makes every turn a closed-book answer.
   tools: true,
   cwd: "",
-  maxToolRounds: 6,
+  maxToolRounds: 10,
   // A ruling on a thinking route spends most of its budget reasoning before it
   // writes anything, and the provider counts both against one cap. The budget is
   // sized so a full ruling fits after a full train of thought.
@@ -469,8 +469,8 @@ function systemFor(debate, side, config) {
     "- If the opponent is simply right, say so in one line and name the strongest remaining doubt instead of manufacturing a fight.",
     "- End with one observation or test that would settle the disagreement.",
     "- When a claim is about a whole file, read it with `whole: true`. A 200-line slice does not support a statement about the file, and a line-number citation taken from a slice proves less than it looks.",
-    "- When a claim is about tests, run them: `run` executes the project's own suite and returns the exit code. \"The tests pass\" is checkable, and checking it is cheaper than weighing who sounds sure.",
-    "- When a claim in this debate is about tests passing, failing or missing, `run` executes the project's own suite and returns the exit code. Buy the result instead of arguing about it.",
+    "- When a claim is about tests passing, failing or missing, `run` executes the project's own suite and returns the exit code. Buy the result instead of arguing about it.",
+    `- This turn allows ${String(config.maxToolRounds)} tool calls and about ${String(Math.round(MAX_TOOL_BYTES / 1024))} KB of file text. Plan the reads to fit: a whole file counts as one call, and if the answer needs more than the budget, say which part you could not open.`,
     "- If you could not read something you needed, say which part and why. Never infer what unread code probably does and present it as a finding.",
     "- 150-350 words. Prose only: no headings, no bullet lists longer than three items, no summary paragraphs.",
     "- Answer in the language the exchange is written in; keep code, identifiers, and quoted text unchanged.",
@@ -1185,7 +1185,11 @@ export function apply(ctx, rawConfig = {}) {
         text: reply.text.slice(0, MAX_TURN_CHARS),
         ms: reply.ms,
         truncated: reply.truncated === true,
-        used: used.slice(0, 12),
+        // Forty is past any turn's budget, so the list is effectively complete; when it
+		// is not, the tail says so instead of dropping the last reads silently — the
+		// arbiter calls an unlisted path "fabricated", and a real file would be judged
+		// that way because we hid it.
+		used: used.length > 40 ? [...used.slice(0, 39), `… +${String(used.length - 39)} more reads`] : used,
         at: new Date().toISOString(),
       };
       debate.turns.push(turn);
@@ -1557,7 +1561,15 @@ export function apply(ctx, rawConfig = {}) {
 
 async function listText(ctx, config) {
   const ids = listDebateIds(config);
-  const lines = ["## debates"];
+  // The effective numbers, not the defaults: a saved setting overrides the profile,
+  // and quoting a default while the file says something else is how a caller ends up
+  // claiming "6 calls" to a model that was given 3.
+  const lines = [
+    `## budgets · ${String(config.maxToolRounds)} reads per turn · ${String(Math.round(MAX_TOOL_BYTES / 1024))} KB · reply ${String(config.maxReplyTokens)} · verdict ${String(config.judgeTokens)}`,
+    `## modes · tools ${config.tools === true ? "on" : "off"} · judge reads ${String(config.judgeToolRounds ?? 8)} · opponent ${config.defaultOpponent || "не выбран"} · judge ${config.judge || "не выбран"}`,
+    "",
+    "## debates",
+  ];
   if (ids.length === 0) lines.push('(none yet — start one with action:"open")');
   for (const id of ids.slice(-12)) {
     try {

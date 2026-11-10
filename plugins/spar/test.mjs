@@ -1029,6 +1029,33 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 48. a staged change is still a change
+{
+  const { dir, cleanup } = sandboxDir("gitstaged");
+  const git = (args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  git(["init", "-q"]);
+  writeFileSync(path.join(dir, "a.txt"), "one\n", "utf8");
+  git(["add", "."]);
+  git(["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "base"]);
+  writeFileSync(path.join(dir, "a.txt"), "one\ntwo\n", "utf8");
+  git(["add", "."]);
+  const diff = __internals.runTool(dir, "git", { sub: "diff" });
+  includes(diff, "staged", "the staged half is named");
+  includes(diff, "+two", "and shows the staged line, not 'nothing to show'");
+  cleanup();
+}
+
+// 49. tokens.ts is source, not a secret
+{
+  const { dir, cleanup } = sandboxDir("tokens");
+  writeFileSync(path.join(dir, "tokens.ts"), "export const TOKEN = 1;\n", "utf8");
+  includes(__internals.runTool(dir, "read", { path: "tokens.ts" }), "TOKEN", "a lexer file is readable");
+  includes(__internals.runTool(dir, "grep", { pattern: "TOKEN" }), "tokens.ts", "and searchable");
+  writeFileSync(path.join(dir, "tokens.json"), "{\"a\":1}\n", "utf8");
+  includes(__internals.runTool(dir, "read", { path: "tokens.json" }), "denied", "a credential-shaped file still is not");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;
