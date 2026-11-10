@@ -29,6 +29,10 @@ function includes(haystack, needle, label) {
   ok(typeof haystack === "string" && haystack.includes(needle), label, `missing ${JSON.stringify(needle)}`);
 }
 
+function notIncludes(haystack, needle, label) {
+  ok(typeof haystack === "string" && !haystack.includes(needle), label, `unexpected ${JSON.stringify(needle)}`);
+}
+
 /** A fake ctx whose `llm` records every request and answers with a scripted text. */
 function makeHarness({ text = "opponent reply", finish = { kind: "stop" }, dir, config, delayMs = 0 } = {}) {
   const calls = [];
@@ -646,6 +650,37 @@ const exec = { signal: undefined };
   rmSync(repo, { recursive: true, force: true });
 }
 
+// 26b. the settings route keeps "profile" and "current" apart
+{
+  const { settingsHandler } = await import("./settings.js");
+  const repo = mkdtempSync(path.join(tmpdir(), "spar-settings-route-"));
+  const { createSettingsStore } = await import("./settings.js");
+  const store = createSettingsStore(path.join(repo, "settings.json"));
+  store.write({ opponent: "zexkora/deepseek-v4.1-flash-1017" });
+  const handler = settingsHandler({
+    store,
+    // The real one merges saved values into config before answering, which is
+    // exactly why a saved model used to be printed as the profile default.
+    effective: () => ({
+      profile: { opponent: "antigravity/gemini-3.8-flash" },
+      current: { opponent: "zexkora/deepseek-v4.1-flash-1017" },
+    }),
+    debates: () => [],
+  });
+  const answer = await new Promise((resolve) => {
+    const res = {
+      writeHead() {},
+      end(body) {
+        resolve(JSON.parse(body));
+      },
+    };
+    handler({ method: "GET", url: "/spar-settings" }, res);
+  });
+  eq(answer.effective.profile.opponent, "antigravity/gemini-3.8-flash", "the profile default is reported as itself");
+  eq(answer.effective.current.opponent, "zexkora/deepseek-v4.1-flash-1017", "and the saved value separately");
+  rmSync(repo, { recursive: true, force: true });
+}
+
 // 27. result waits for a turn that is still being written
 {
   const { dir, cleanup } = sandboxDir("resultwait");
@@ -1121,8 +1156,10 @@ const exec = { signal: undefined };
   await tool.execute({ action: "open", topic: "t", cwd: dir, async: false }, exec);
   await tool.execute({ action: "say", id: "d1", message: "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", async: false }, exec);
   const back = await tool.execute({ action: "result", id: "d1", async: false }, exec);
-  includes(back.text, "твой аргумент", "the result names the caller's own turn");
-  includes(back.text, "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", "and prints it, not only the reply");
+  // The card carries the caller's turn (`mine`); repeating it in the text would
+  // print the same paragraph twice, which is what the duplicate-answer bug was.
+  notIncludes(back.text, "твой аргумент", "the result does not echo the caller's own turn");
+  notIncludes(back.text, "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", "and prints only the reply");
   calls.length = 0;
   await tool.execute({ action: "verdict", id: "d1", project: true, async: false }, exec);
   includes(JSON.stringify(calls[0].messages), "МОЙ АРГУМЕНТ ПРО ПАМЯТЬ", "the judge is given the caller's argument too");
@@ -1159,6 +1196,19 @@ const exec = { signal: undefined };
     complained = String(error?.message ?? error);
   }
   includes(complained, "still being written", "a half-written turn is refused instead of judged");
+  cleanup();
+}
+
+// 55. a turn records the tool call that wrote it
+{
+  const { dir, cleanup } = sandboxDir("callstamp");
+  const { tool } = makeHarness({ dir, text: () => "ответ" });
+  const call = { ...exec, rootCallId: "call_stamped_1" };
+  await tool.execute({ action: "open", topic: "t", async: false }, call);
+  const debate = JSON.parse(readFileSync(path.join(dir, "d1.json"), "utf8"));
+  const turn = debate.turns[debate.turns.length - 1];
+  ok(typeof turn.call === "string" && turn.call !== "", "the turn keeps its call id", "no call id on the turn");
+  ok(turn.call === "call_stamped_1", "and it is the call that produced it", `got ${turn.call}`);
   cleanup();
 }
 

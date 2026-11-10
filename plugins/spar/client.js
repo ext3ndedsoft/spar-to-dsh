@@ -416,6 +416,8 @@ window.__ModuleLoader__.load({
 		const STALL_AFTER = 40;
 		/** Nothing is declared dead inside the first minute: a cold gateway is slow. */
 		const STALL_FLOOR_MS = 60_000;
+		/** A card stops asking for a call the registry no longer knows at all. */
+		const KEEP_POLLING_MS = 5 * 60_000;
 
 		/**
 		 * Reveal the arriving text a frame at a time instead of in the chunks the
@@ -439,6 +441,48 @@ window.__ModuleLoader__.load({
 			}, [count, target, streaming]);
 			if (streaming !== true || count >= target) return full;
 			return full.slice(0, count);
+		}
+
+		/**
+		 * The same turn, read from the transcript on disk.
+		 *
+		 * The registry above is memory: it forgets after ten minutes, and a page
+		 * reload starts with nothing. The debate file does not forget, and every
+		 * turn records the tool call that wrote it, so a card can rebuild itself
+		 * after a restart instead of showing "Turn is running…" forever.
+		 */
+		function useDurableTurn(callId, enabled) {
+			const [turn, setTurn] = React.useState(null);
+			React.useEffect(() => {
+				if (enabled !== true || typeof callId !== "string" || callId === "") return undefined;
+				let stopped = false;
+				let timer;
+				let tries = 0;
+				const ask = () => {
+					fetch(`/spar-turn?call=${encodeURIComponent(callId)}`, { cache: "no-store" })
+						.then((response) => (response.ok ? response.json() : null))
+						.then((value) => {
+							if (stopped) return;
+							if (value !== null && value.missing !== true) {
+								setTurn(value);
+								return;
+							}
+							tries += 1;
+							// The turn is written at the end, so early calls miss by design.
+							if (tries < 20) timer = setTimeout(ask, 3000);
+						})
+						.catch(() => {
+							tries += 1;
+							if (!stopped && tries < 20) timer = setTimeout(ask, 5000);
+						});
+				};
+				ask();
+				return () => {
+					stopped = true;
+					clearTimeout(timer);
+				};
+			}, [callId, enabled]);
+			return turn;
 		}
 
 		/**
@@ -483,6 +527,10 @@ window.__ModuleLoader__.load({
 								// ответа от реестра" at the beginning came from.
 								const waited = Date.now() - startedAt;
 								setState((previous) => ({ ...(previous ?? {}), known: false, stalled: misses >= STALL_AFTER && waited > STALL_FLOOR_MS }));
+								// After the registry has kept entries for a while it may drop
+								// this one; polling it forever is a tab that never sleeps. Give
+								// up once the answer cannot arrive any more.
+								if (waited > KEEP_POLLING_MS) return;
 								schedule(LIVE_MS * 2);
 							}
 						})
@@ -525,6 +573,10 @@ window.__ModuleLoader__.load({
 			const started = raw.includes("· started]");
 			const running = props.phase === "preparing" || props.phase === "start";
 			const live = useLiveTurn(props.callId, running || started);
+			const liveKnownNow = live !== null && live !== undefined && live.known === true;
+			// Only when memory has nothing: the registry is faster and richer while a
+			// turn is in flight, the file is the only thing that survives a restart.
+			const durable = useDurableTurn(props.callId, started === true && liveKnownNow !== true);
 			// Which card is the live one for this debate? A spawn card that has been
 			// overtaken by a later call is a finished phase, and printing it in full is
 			// the parade of identical "вторая модель" panels. It collapses to one line;
@@ -534,16 +586,30 @@ window.__ModuleLoader__.load({
 			React.useEffect(() => {
 				if (!started || debateId === "") return undefined;
 				let alive = true;
-				fetch(`/spar-live?debate=${encodeURIComponent(debateId)}`, { cache: "no-store" })
-					.then((response) => (response.ok ? response.json() : null))
-					.then((value) => {
-						if (alive && value !== null && value.newest !== null && value.newest !== undefined) setNewest(value.newest);
-					})
-					.catch(() => {});
+				let timer;
+				// Asked once, this answer is stale the moment the next phase starts: an
+				// old card would never learn that a newer call exists and would never
+				// collapse. Poll while the card is a spawn card, and stop as soon as it
+				// knows it was overtaken.
+				const ask = () => {
+					fetch(`/spar-live?debate=${encodeURIComponent(debateId)}`, { cache: "no-store" })
+						.then((response) => (response.ok ? response.json() : null))
+						.then((value) => {
+							if (!alive || value === null || value.newest === null || value.newest === undefined) return;
+							setNewest(value.newest);
+							const overtaken = typeof props.callId === "string" && value.newest.callId !== props.callId;
+							if (!overtaken) timer = setTimeout(ask, 2500);
+						})
+						.catch(() => {
+							if (alive) timer = setTimeout(ask, 5000);
+						});
+				};
+				ask();
 				return () => {
 					alive = false;
+					clearTimeout(timer);
 				};
-			}, [debateId, started]);
+			}, [debateId, started, props.callId]);
 			const superseded =
 				started === true &&
 				typeof props.callId === "string" &&
@@ -685,7 +751,43 @@ window.__ModuleLoader__.load({
 			}
 
 			// An async turn settled: the result is only an acknowledgement, so the
-			// text comes from the polled state instead.
+			// text comes from the polled state — or, when the registry has forgotten
+			// this call, from the transcript on disk.
+			if (started && durable !== null && !(live !== null && live.done === true)) {
+				return jsxs("div", {
+					"data-spar-card": "",
+					"data-state": "settled",
+					"data-tool": "spar",
+					style: { "--spar-rail": accent(modelOf(durable.route)) },
+					children: [
+						jsxs("div", {
+							"data-spar-head": "",
+							children: [
+								jsx("span", { "data-spar-badge": "", children: "◈" }),
+								jsx("span", { "data-spar-name": "", children: stageName({ phase: durable.role === "judge" ? "verdict" : "reply", role: durable.role, route: durable.route }) }),
+								jsx("span", {
+									"data-spar-tag": "",
+									children: durable.role === "judge" ? "приговор" : "возражение",
+								}),
+								jsx("span", {
+									"data-spar-meta": "",
+									children: `${(durable.ms / 1000).toFixed(1)}s · ${durable.id}`,
+								}),
+							],
+						}),
+						jsxs("div", {
+							"data-spar-body": "",
+							children: [
+								typeof durable.mine === "string" && durable.mine !== ""
+									? jsx("div", { "data-spar-mine": "", children: durable.mine })
+									: null,
+								jsx(Body, { text: durable.text }),
+							],
+						}),
+					],
+				});
+			}
+
 			if (started && live !== null && live.done === true) {
 				const verdict = live.phase === "verdict";
 				return jsxs("div", {
@@ -711,7 +813,19 @@ window.__ModuleLoader__.load({
 						}),
 						live.error
 							? jsx("div", { "data-spar-body": "", children: live.error })
-							: jsx(Body, { text: live.text }),
+							: jsxs("div", {
+									"data-spar-body": "",
+									children: [
+										// The caller's argument stays visible after the turn ends. It
+										// used to live only in the working state, so a finished card
+										// showed a reply to nothing — and the text no longer echoes
+										// the argument, so this is the only place it can come from.
+										typeof live.mine === "string" && live.mine !== ""
+											? jsx("div", { "data-spar-mine": "", children: live.mine })
+											: null,
+										jsx(Body, { text: live.text }),
+									],
+								}),
 					],
 				});
 			}
@@ -887,6 +1001,21 @@ window.__ModuleLoader__.load({
 .spp .empty{font-size:11px;color:#8b8b99}
 `;
 
+		/**
+		 * The "inherit" option's label. It must never promise a model that no longer
+		 * exists: `antigravity/gemini-3.8-flash-tiered` was deleted from the harness
+		 * and still appeared here as the value in use, which read as "saving changed
+		 * my model". A dead value is named as dead.
+		 */
+		function inheritLabel(role, value, catalog) {
+			if (typeof value !== "string" || value === "") return "не выбран — выбери " + role;
+			// `self` is a legitimate judge choice, not a model missing from the catalog.
+			if (value === "self") return "как в профиле · я сам (моя модель)";
+			const models = catalog?.models ?? [];
+			const known = models.some((entry) => entry.label === value);
+			return `как в профиле · ${value}${known ? "" : " · нет в каталоге"}`;
+		}
+
 		/** One choice the panel can leave alone: empty value means "profile default". */
 		function modelOptions(models, allowEmpty, emptyLabel, current) {
 			const rows = [];
@@ -940,7 +1069,12 @@ window.__ModuleLoader__.load({
 							return;
 						}
 						setState(value);
-						setDraft({ ...(value.effective ?? {}), ...(value.saved ?? {}) });
+						// The draft is what will be written, so it holds only what is already
+						// saved. Anything else comes from `effective` for display only —
+						// seeding the draft from it pinned every inherited value into
+						// settings.json on the first save, including models that no longer
+						// exist in the harness.
+						setDraft({ ...(value.saved ?? {}) });
 					})
 					.catch(() => {
 						setBad(true);
@@ -993,7 +1127,12 @@ window.__ModuleLoader__.load({
 			};
 
 			const models = Array.isArray(catalog.models) ? catalog.models : [];
-			const effective = state?.effective ?? {};
+			// `profile` is what the yaml would give a key nobody has saved — the truth
+			// behind "как в профиле". `effective` is what a turn will really use right
+			// now, saved values included. Confusing the two made a saved model look
+			// like the profile default.
+			const profile = state?.effective?.profile ?? {};
+			const effective = state?.effective?.current ?? {};
 			const debates = Array.isArray(state?.debates) ? state.debates : [];
 
 			if (!open) {
@@ -1052,7 +1191,7 @@ window.__ModuleLoader__.load({
 												children: modelOptions(
 													models,
 													true,
-													`как в профиле · ${effective.opponent ?? "—"}`.replace("как в профиле · —", "не выбран — выбери модель"),
+													inheritLabel("оппонент", profile.opponent, catalog),
 													draft.opponent ?? "",
 												),
 											}),
@@ -1068,7 +1207,7 @@ window.__ModuleLoader__.load({
 												children: [
 													jsx("option", {
 														value: "",
-														children: effective.judge ? `как в профиле · ${effective.judge}` : "не выбран — выбери судью",
+														children: inheritLabel("судья", profile.judge, catalog),
 														key: "auto",
 													}),
 													jsx("option", { value: "self", children: "я сам (моя модель)", key: "self" }),
@@ -1087,7 +1226,7 @@ window.__ModuleLoader__.load({
 												children: modelOptions(
 													models,
 													true,
-													`как в профиле · ${effective.challenger ?? "—"}`.replace("как в профиле · —", "не выбран"),
+													inheritLabel("соперник", profile.challenger, catalog),
 													draft.challenger ?? "",
 												),
 											}),
@@ -1100,15 +1239,23 @@ window.__ModuleLoader__.load({
 											jsxs("div", {
 												className: "seg",
 												children: [
+													// Three states, not two: a segment of ru/en had no way back to
+													// "whatever the profile says", so the first click pinned the
+													// language for good.
 													jsx("button", {
-														"data-on": (draft.language ?? effective.language) === "ru" ? "1" : "0",
+														"data-on": (draft.language ?? profile.language) === "ru" ? "1" : "0",
 														onClick: () => set("language", "ru"),
 														children: "русский",
 													}),
 													jsx("button", {
-														"data-on": (draft.language ?? effective.language) === "en" ? "1" : "0",
+														"data-on": (draft.language ?? profile.language) === "en" ? "1" : "0",
 														onClick: () => set("language", "en"),
 														children: "english",
+													}),
+													jsx("button", {
+														"data-on": draft.language === "" || draft.language === undefined ? "1" : "0",
+														onClick: () => set("language", ""),
+														children: "как в профиле",
 													}),
 												],
 											}),
@@ -1116,17 +1263,28 @@ window.__ModuleLoader__.load({
 									}),
 									jsx("div", {
 										className: "row",
-										children: jsxs("div", {
-											className: "sw",
-											children: [
-												jsx("span", { children: "читает проект" }),
-												jsx("button", {
-													"data-on": (draft.tools ?? effective.tools) === false ? "0" : "1",
-													onClick: () => set("tools", !(draft.tools ?? effective.tools)),
-													children: jsx("i", {}),
-												}),
-											],
-										}),
+										children: [
+											jsx("label", { children: "читает проект" }),
+											// A switch can only say on or off, so it could never give a
+											// value back to the profile: once touched, the choice was
+											// pinned forever. Three states, one of them "не решать".
+											jsx("select", {
+												value: typeof draft.tools === "boolean" ? String(draft.tools) : "",
+												onChange: (event) => {
+													const value = event.target.value;
+													set("tools", value === "" ? "" : value === "true");
+												},
+												children: [
+													jsx("option", {
+														value: "",
+														children: `как в профиле · ${profile.tools === false ? "выключено" : "включено"}`,
+														key: "auto",
+													}),
+													jsx("option", { value: "true", children: "включено", key: "on" }),
+													jsx("option", { value: "false", children: "выключено", key: "off" }),
+												],
+											}),
+										],
 									}),
 									jsxs("div", {
 										className: "two",
@@ -1139,7 +1297,7 @@ window.__ModuleLoader__.load({
 														type: "number",
 														min: 0,
 														max: 8,
-														value: draft.maxToolRounds ?? "",
+														value: draft.maxToolRounds ?? effective.maxToolRounds ?? "",
 														onChange: (event) => set("maxToolRounds", event.target.value),
 													}),
 												],
@@ -1152,7 +1310,7 @@ window.__ModuleLoader__.load({
 														type: "number",
 														min: 0,
 														step: 1024,
-														value: draft.maxReplyTokens ?? "",
+														value: draft.maxReplyTokens ?? effective.maxReplyTokens ?? "",
 														onChange: (event) => set("maxReplyTokens", event.target.value),
 													}),
 												],
@@ -1167,7 +1325,7 @@ window.__ModuleLoader__.load({
 												type: "number",
 												min: 0,
 												step: 1024,
-												value: draft.judgeTokens ?? "",
+												value: draft.judgeTokens ?? effective.judgeTokens ?? "",
 												onChange: (event) => set("judgeTokens", event.target.value),
 											}),
 										],
@@ -1180,7 +1338,7 @@ window.__ModuleLoader__.load({
 												children: [
 													jsx("label", { children: "темп оппонента" }),
 													jsx("select", {
-														value: draft.temperatureOpponent ?? effective.temperature ?? "",
+														value: draft.temperatureOpponent ?? "",
 														onChange: (event) => set("temperatureOpponent", event.target.value),
 														children: ["", 0.2, 0.5, 0.8, 1, 1.2].map((value) =>
 															jsx(
@@ -1188,7 +1346,7 @@ window.__ModuleLoader__.load({
 																{
 																	key: String(value),
 																	value: String(value),
-																	children: value === "" ? "по профилю" : String(value),
+																	children: value === "" ? `по профилю · ${profile.temperatureOpponent ?? "—"}` : String(value),
 																},
 																`opt-${value}`,
 															),
@@ -1201,7 +1359,7 @@ window.__ModuleLoader__.load({
 												children: [
 													jsx("label", { children: "темп судьи" }),
 													jsx("select", {
-														value: draft.temperatureJudge ?? effective.judgeTemperature ?? "",
+														value: draft.temperatureJudge ?? "",
 														onChange: (event) => set("temperatureJudge", event.target.value),
 														children: ["", 0, 0.15, 0.25, 0.5].map((value) =>
 															jsx(
@@ -1209,7 +1367,7 @@ window.__ModuleLoader__.load({
 																{
 																	key: String(value),
 																	value: String(value),
-																	children: value === "" ? "по профилю" : String(value),
+																	children: value === "" ? `по профилю · ${profile.temperatureJudge ?? "—"}` : String(value),
 																},
 																`jopt-${value}`,
 															),

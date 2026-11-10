@@ -1109,6 +1109,19 @@ export function apply(ctx, rawConfig = {}) {
   // operator's, written by the panel and read on every turn.
   const store = createSettingsStore(path.join(config.dir, "settings.json"));
   const baseConfig = { ...config, opponents: { ...config.opponents } };
+  /** What the yaml says a turn gets when the settings file is silent. */
+  const profileDefaults = {
+    opponent: baseConfig.defaultOpponent,
+    judge: baseConfig.judge,
+    challenger: baseConfig.challenger,
+    language: baseConfig.language,
+    tools: baseConfig.tools,
+    maxToolRounds: baseConfig.maxToolRounds,
+    maxReplyTokens: baseConfig.maxReplyTokens,
+    judgeTokens: baseConfig.judgeTokens,
+    temperatureOpponent: baseConfig.temperature ?? DEFAULTS.temperature,
+    temperatureJudge: baseConfig.judgeTemperature ?? DEFAULTS.judgeTemperature,
+  };
   const applySettings = () => {
     const saved = store.read();
     config.defaultOpponent = saved.opponent ?? baseConfig.defaultOpponent;
@@ -1146,11 +1159,64 @@ export function apply(ctx, rawConfig = {}) {
     }
     return rows;
   };
+
+  /**
+   * The turn a tool call wrote, read from disk.
+   *
+   * A card outlives the process that filled it: the in-memory registry drops its
+   * entry after ten minutes, and a page reload starts with nothing at all. The
+   * transcript is the durable record, so the call id is stamped on the turn it
+   * produced and the card can ask for it by name.
+   */
+  const turnByCall = (callId) => {
+    if (typeof callId !== "string" || callId === "") return null;
+    for (const id of listDebateIds(config).slice(-40)) {
+      let debate;
+      try {
+        debate = loadDebate(config, id);
+      } catch {
+        continue;
+      }
+      const index = debate.turns.findIndex((turn) => turn?.call === callId);
+      if (index === -1) continue;
+      const turn = debate.turns[index];
+      const before = index > 0 ? debate.turns[index - 1] : null;
+      const round = debate.turns.slice(0, index + 1).filter((entry) => entry.role !== "left").length;
+      return {
+        id,
+        round,
+        role: turn.role,
+        route: typeof turn.route === "string" ? turn.route : null,
+        ms: typeof turn.ms === "number" ? turn.ms : 0,
+        text: typeof turn.text === "string" ? turn.text : "",
+        mine: turn.role !== "judge" && before?.role === "left" && typeof before.text === "string" ? before.text : null,
+      };
+    }
+    return null;
+  };
   try {
     const server = typeof ctx.get === "function" ? ctx.get("webServer") : ctx.webServer;
     if (server !== undefined && server !== null && typeof server.register === "function") {
       ctx.effect(
         () => server.register({ kind: "prefix", path: LIVE_PATH, handler: liveHandler(live) }, "spar: live route"),
+      ctx.effect(
+        () =>
+          server.register(
+            {
+              kind: "prefix",
+              path: "/spar-turn",
+              handler: (req, res) => {
+                const url = new URL(req.url ?? "/", "http://localhost");
+                const call = url.searchParams.get("call") ?? "";
+                const found = turnByCall(call);
+                res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+                res.end(JSON.stringify(found === null ? { missing: true } : found));
+              },
+            },
+            "spar: durable turn route",
+          ),
+        "spar: durable turn route",
+      ),
         "spar: live route",
       );
       ctx.effect(
@@ -1162,18 +1228,27 @@ export function apply(ctx, rawConfig = {}) {
               handler: settingsHandler({
                 store,
                 effective: () => {
+                  // Two different facts, and the panel needs both: `profile` is what
+                  // the yaml gives a key that the file does not set — the honest thing
+                  // to print after "как в профиле" — while `current` is what a turn
+                  // will really use. Reading `config` for the first one was wrong: by
+                  // then it already had the saved values merged in, so a saved model
+                  // was presented as the profile default.
                   applySettings();
                   return {
-                    opponent: config.defaultOpponent,
-                    judge: config.judge,
-                    challenger: config.challenger,
-                    language: config.language,
-                    tools: config.tools,
-                    maxToolRounds: config.maxToolRounds,
-                    maxReplyTokens: config.maxReplyTokens,
-                    judgeTokens: config.judgeTokens,
-                    temperature: config.temperature,
-                    judgeTemperature: config.judgeTemperature,
+                    profile: profileDefaults,
+                    current: {
+                      opponent: config.defaultOpponent,
+                      judge: config.judge,
+                      challenger: config.challenger,
+                      language: config.language,
+                      tools: config.tools,
+                      maxToolRounds: config.maxToolRounds,
+                      maxReplyTokens: config.maxReplyTokens,
+                      judgeTokens: config.judgeTokens,
+                      temperatureOpponent: config.temperature ?? DEFAULTS.temperature,
+                      temperatureJudge: config.judgeTemperature ?? DEFAULTS.judgeTemperature,
+                    },
                   };
                 },
                 debates: debateIndex,
@@ -1273,6 +1348,12 @@ export function apply(ctx, rawConfig = {}) {
 		// that way because we hid it.
 		used: used.length > 40 ? [...used.slice(0, 39), `… +${String(used.length - 39)} more reads`] : used,
         at: new Date().toISOString(),
+        // The tool call that produced this turn. The card is rendered from a
+        // short-lived in-memory registry, so after a page reload or a restart it
+        // has nothing left to show; the call id is what lets it find the durable
+        // record on disk instead of being stuck on "Turn is running…".
+        call: callId,
+        route: route.label,
       };
       debate.turns.push(turn);
       if (debate.turns.length > MAX_TURNS) debate.turns = debate.turns.slice(-MAX_TURNS);
@@ -1320,7 +1401,14 @@ export function apply(ctx, rawConfig = {}) {
       applySettings();
       // The card polls live state by the tool call id it already holds, and a
       // debate may read the repository it argues about.
-      const callId = typeof exec?.rootCallId === "string" ? exec.rootCallId : "";
+      const callId =
+        typeof exec?.rootCallId === "string"
+          ? exec.rootCallId
+          : typeof exec?.callId === "string"
+            ? exec.callId
+            : typeof exec?.id === "string"
+              ? exec.id
+              : "";
       const repo =
         typeof args?.cwd === "string" && args.cwd.trim() !== ""
           ? repoFor({ ...config, cwd: args.cwd }, exec)
@@ -1456,11 +1544,10 @@ export function apply(ctx, rawConfig = {}) {
           guard(id, async () => {
             debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString() });
             const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, mine: message, repo: repoOf(debate) });
-            // The caller's own words are part of the record and must be part of what
-            // comes back: the card showed only the reply, so its own argument looked
-            // missing even though the transcript had it.
-            const mine = message.length > TURN_SHOWN_CHARS ? `${message.slice(0, TURN_SHOWN_CHARS)}\n… (${message.length - TURN_SHOWN_CHARS} characters cut)` : message;
-            return { text: `A (ты) — твой аргумент:\n${mine}\n\n${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}` };
+            // The reply only. The caller's own argument is already in the card above
+            // this one (`mine`), and printing it again here made the transcript show
+            // the same paragraph twice — the service answer duplicated the turn.
+            return { text: `${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}` };
           }),
         );
       }
@@ -1643,6 +1730,11 @@ export function apply(ctx, rawConfig = {}) {
             text: reply.text.slice(0, MAX_TURN_CHARS),
             ms: reply.ms,
             at: new Date().toISOString(),
+            // Remember who judged. `result` used to re-resolve the route from the
+            // current settings, so after a settings change it named a model that had
+            // not written this verdict.
+            route: judge.label,
+            call: callId,
           };
           debate.turns.push(turn);
           debate.verdict = reply.text;
@@ -1699,22 +1791,11 @@ export function apply(ctx, rawConfig = {}) {
         if (last === undefined) {
           return { text: `[spar ${id} · result]\nNothing has been written yet — the turn never started.` };
         }
-        const route = last.role === "judge" ? judgeRoute(args?.judge, config, exec) : debate.right;
-        // The caller's own turn is half the exchange. Printing only the reply made
-        // the argument look lost even though the transcript had it, and the reader
-        // could not check whether the reply answered what was actually said.
-        const index = debate.turns.indexOf(last);
-        const mine = index > 0 ? debate.turns[index - 1] : undefined;
-        const own =
-          mine !== undefined && mine.role === "left" && typeof mine.text === "string" && mine.text.trim() !== ""
-            ? `A (ты) — твой аргумент:\n${
-                mine.text.length > TURN_SHOWN_CHARS
-                  ? `${mine.text.slice(0, TURN_SHOWN_CHARS)}\n… (${mine.text.length - TURN_SHOWN_CHARS} characters cut)`
-                  : mine.text
-              }\n\n`
-            : "";
+        const route = last.role === "judge" && typeof last.route === "string" ? { label: last.route } : last.role === "judge" ? judgeRoute(args?.judge, config, exec) : debate.right;
+        // The reply only. The caller's argument sits in its own card; echoing it here
+        // printed the same paragraph twice and read as a duplicated answer.
         return {
-          text: `${own}${resultHeader(debate, last, route)}\n${clip(last.text)}${usedLine(last)}`,
+          text: `${resultHeader(debate, last, route)}\n${clip(last.text)}${usedLine(last)}`,
         };
       }
 
