@@ -84,10 +84,28 @@ function makeHarness({ text = "opponent reply", finish = { kind: "stop" }, dir, 
       return { config: chosen, stream: (callOptions) => llm.stream(callOptions) };
     },
   };
+  // The web server arrives as a service, not as a property that is already there
+  // when the plugin applies. The fake ctx models that: `get` knows nothing about
+  // it, `inject` is the only way to reach it, and `effect` runs the registration
+  // immediately. Code that reaches for the server eagerly registers nothing here.
+  const routes = [];
   const ctx = {
     tools: { register: (definition) => tools.push(definition) },
     get: (name) => (name === "llm" ? llm : undefined),
     logger: { warn: () => {} },
+    inject: (deps, callback) => {
+      const webServer = {
+        register: (route, label) => {
+          routes.push({ path: route.path, kind: route.kind, label });
+          return () => {};
+        },
+      };
+      callback({ webServer, get: ctx.get });
+    },
+    effect: (fn) => {
+      fn();
+      return () => {};
+    },
   };
   // The plugin ships no models; a test fixture names its own, exactly like a
   // profile would. Every alias used by the suite is defined here.
@@ -111,7 +129,7 @@ function makeHarness({ text = "opponent reply", finish = { kind: "stop" }, dir, 
   // Turns are async by default now; the offline suite asserts on the reply, so
   // it waits unless a test says otherwise (test 21 exercises the async path).
   const execute = (args, exec) => tool.execute(args.async === undefined ? { ...args, async: false } : args, exec);
-  return { ctx, tools, llm, tool: { ...tool, execute }, calls };
+  return { ctx, tools, llm, routes, tool: { ...tool, execute }, calls };
 }
 
 function sandboxDir(label) {
@@ -1217,6 +1235,18 @@ const exec = { signal: undefined };
   const text = await __internals.attemptTool("web", { url: "https://no-such-host.invalid/page" }, null);
   includes(text, "the web tool failed", "the failure is reported as a tool result");
   includes(text, "not the end of your turn", "and the model is told it may continue");
+}
+// 57. the routes register even though the web server arrives late
+{
+  const { dir, cleanup } = sandboxDir("routes");
+  const { routes } = makeHarness({ dir });
+  const paths = routes.map((route) => route.path).sort();
+  eq(paths.join(","), "/spar-live,/spar-models,/spar-settings,/spar-turn", "every browser route is registered through inject");
+  // The bug this exists for: reaching for `ctx.get("webServer")` gave undefined
+  // at apply time, nothing registered, and the panel said "маршрут настроек не
+  // отвечает" while the tool itself worked.
+  ok(routes.length === 4, "all four routes, not zero", `registered ${routes.length}`);
+  cleanup();
 }
 /* ----------------------------------------------------------------- report -- */
 

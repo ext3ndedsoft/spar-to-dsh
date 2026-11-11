@@ -1246,82 +1246,88 @@ export function apply(ctx, rawConfig = {}) {
     }
     return null;
   };
-  try {
-    const server = typeof ctx.get === "function" ? ctx.get("webServer") : ctx.webServer;
-    if (server !== undefined && server !== null && typeof server.register === "function") {
-      ctx.effect(
-        () => server.register({ kind: "prefix", path: LIVE_PATH, handler: liveHandler(live) }, "spar: live route"),
-      ctx.effect(
-        () =>
-          server.register(
-            {
-              kind: "prefix",
-              path: "/spar-turn",
-              handler: (req, res) => {
-                const url = new URL(req.url ?? "/", "http://localhost");
-                const call = url.searchParams.get("call") ?? "";
-                const found = turnByCall(call);
-                res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-                res.end(JSON.stringify(found === null ? { missing: true } : found));
-              },
-            },
-            "spar: durable turn route",
-          ),
-        "spar: durable turn route",
-      ),
-        "spar: live route",
-      );
-      ctx.effect(
-        () =>
-          server.register(
-            {
-              kind: "exact",
-              path: "/spar-settings",
-              handler: settingsHandler({
-                store,
-                effective: () => {
-                  // Two different facts, and the panel needs both: `profile` is what
-                  // the yaml gives a key that the file does not set — the honest thing
-                  // to print after "как в профиле" — while `current` is what a turn
-                  // will really use. Reading `config` for the first one was wrong: by
-                  // then it already had the saved values merged in, so a saved model
-                  // was presented as the profile default.
-                  applySettings();
-                  return {
-                    profile: profileDefaults,
-                    current: {
-                      opponent: config.defaultOpponent,
-                      judge: config.judge,
-                      challenger: config.challenger,
-                      language: config.language,
-                      tools: config.tools,
-                      maxToolRounds: config.maxToolRounds,
-                      maxReplyTokens: config.maxReplyTokens,
-                      judgeTokens: config.judgeTokens,
-                      temperatureOpponent: config.temperature ?? DEFAULTS.temperature,
-                      temperatureJudge: config.judgeTemperature ?? DEFAULTS.judgeTemperature,
-                    },
-                  };
-                },
-                debates: debateIndex,
-              }),
-            },
-            "spar: settings route",
-          ),
-        "spar: settings route",
-      );
-      ctx.effect(
-        () =>
-          server.register(
-            { kind: "exact", path: "/spar-models", handler: modelsHandler({ resolveLlm: () => resolveLlm(ctx) }) },
-            "spar: models route",
-          ),
-        "spar: models route",
-      );
+  // Routes are browser-facing: the settings panel, the live turn a card polls, and
+  // the durable turn it falls back to. `webServer` is a service, so it may not
+  // exist yet when this plugin applies — grabbing it eagerly left every route
+  // unregistered, and the panel showed "маршрут настроек не отвечает" while the
+  // tool itself worked. `inject` waits for the service; a warning is logged if it
+  // never arrives, because a silent skip is how this stayed invisible.
+  ctx.inject(["webServer"], (webCtx) => {
+    const server = webCtx.webServer;
+    if (server === undefined || server === null || typeof server.register !== "function") {
+      ctx.logger?.warn?.("spar: webServer has no register() — the settings panel will not answer");
+      return;
     }
-  } catch (error) {
-    ctx.logger?.warn?.(`spar: live route not registered: ${String(error?.message ?? error)}`);
-  }
+    ctx.effect(
+      () => server.register({ kind: "prefix", path: LIVE_PATH, handler: liveHandler(live) }, "spar: live route"),
+      "spar: live route",
+    );
+    ctx.effect(
+      () =>
+        server.register(
+          {
+            kind: "prefix",
+            path: "/spar-turn",
+            handler: (req, res) => {
+              const url = new URL(req.url ?? "/", "http://localhost");
+              const call = url.searchParams.get("call") ?? "";
+              const found = turnByCall(call);
+              res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+              res.end(JSON.stringify(found === null ? { missing: true } : found));
+            },
+          },
+          "spar: durable turn route",
+        ),
+      "spar: durable turn route",
+    );
+    ctx.effect(
+      () =>
+        server.register(
+          {
+            kind: "exact",
+            path: "/spar-settings",
+            handler: settingsHandler({
+              store,
+              effective: () => {
+                // Two different facts, and the panel needs both: `profile` is what
+                // the yaml gives a key that the file does not set — the honest thing
+                // to print after "как в профиле" — while `current` is what a turn
+                // will really use. Reading `config` for the first one was wrong: by
+                // then it already had the saved values merged in, so a saved model
+                // was presented as the profile default.
+                applySettings();
+                return {
+                  profile: profileDefaults,
+                  current: {
+                    opponent: config.defaultOpponent,
+                    judge: config.judge,
+                    challenger: config.challenger,
+                    language: config.language,
+                    tools: config.tools,
+                    maxToolRounds: config.maxToolRounds,
+                    maxReplyTokens: config.maxReplyTokens,
+                    judgeTokens: config.judgeTokens,
+                    temperatureOpponent: config.temperature ?? DEFAULTS.temperature,
+                    temperatureJudge: config.judgeTemperature ?? DEFAULTS.judgeTemperature,
+                  },
+                };
+              },
+              debates: debateIndex,
+            }),
+          },
+          "spar: settings route",
+        ),
+      "spar: settings route",
+    );
+    ctx.effect(
+      () =>
+        server.register(
+          { kind: "exact", path: "/spar-models", handler: modelsHandler({ resolveLlm: () => resolveLlm(ctx) }) },
+          "spar: models route",
+        ),
+      "spar: models route",
+    );
+  });
 
   const busy = new Set();
 
