@@ -1016,6 +1016,7 @@ window.__ModuleLoader__.load({
 .spp button{background:none;border:0;cursor:pointer}
 .spp :focus-visible{outline:2px solid var(--p-accent);outline-offset:2px}
 @keyframes spp-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes spp-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.99)}}
 @keyframes spp-tab{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .spp .pill{display:flex;align-items:center;gap:8px;padding:6px 13px 6px 7px;border-radius:999px;
 	border:1px solid var(--p-line);background:rgba(20,20,28,.9);backdrop-filter:blur(10px);
@@ -1030,6 +1031,7 @@ window.__ModuleLoader__.load({
 .spp .panel{width:408px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
 	border:1px solid var(--p-line);background:rgba(16,16,23,.96);backdrop-filter:blur(16px);
 	box-shadow:0 28px 80px rgba(0,0,0,.65);animation:spp-in .24s cubic-bezier(.2,.9,.25,1) both}
+.spp .panel.closing{animation:spp-out .16s ease-in forwards}
 .spp .inner{display:flex;flex-direction:column;max-height:min(80vh,700px)}
 
 .spp .top{padding:14px 14px 0;display:flex;align-items:center;gap:10px}
@@ -1139,6 +1141,16 @@ window.__ModuleLoader__.load({
 		 */
 		function Panel() {
 			const [open, setOpen] = React.useState(false);
+			const [closing, setClosing] = React.useState(false);
+			// The panel steps back before it unmounts: vanishing on click reads as a glitch.
+			const requestClose = () => {
+				if (closing) return;
+				setClosing(true);
+				setTimeout(() => {
+					setClosing(false);
+					setOpen(false);
+				}, 150);
+			};
 			const [catalog, setCatalog] = React.useState({ providers: [], models: [] });
 			const [state, setState] = React.useState(null);
 			const [draft, setDraft] = React.useState({});
@@ -1266,7 +1278,7 @@ window.__ModuleLoader__.load({
 				key: "pill",
 				"aria-label": open ? "Закрыть настройки спарринга" : "Открыть настройки спарринга",
 				"aria-expanded": open ? "true" : "false",
-				onClick: () => setOpen(!open),
+				onClick: () => (open ? requestClose() : setOpen(true)),
 				title: open ? "свернуть" : "спарринг: модели и настройки",
 				children: [
 					jsx("span", { className: "mark", children: "◈" }),
@@ -1522,7 +1534,7 @@ const field = (id, label, hint, control) =>
 				className: "spp",
 				children: [jsx("div", {
 					key: "panel",
-					className: "panel",
+					className: "panel" + (closing ? " closing" : ""),
 					role: "dialog",
 					"aria-label": "Настройки спарринга",
 					children: jsxs("div", {
@@ -1535,7 +1547,7 @@ const field = (id, label, hint, control) =>
 									jsxs("div", {
 										children: [jsx("h1", { children: "Спарринг" }), jsx("small", { children: "модели, судья и лимиты · применяются к следующему ходу" })],
 									}),
-									jsx("button", { type: "button", className: "x", "aria-label": "Закрыть панель", title: "Закрыть", onClick: () => setOpen(false), children: "×" }),
+									jsx("button", { type: "button", className: "x", "aria-label": "Закрыть панель", title: "Закрыть", onClick: requestClose, children: "×" }),
 								],
 							}),
 							jsxs("div", {
