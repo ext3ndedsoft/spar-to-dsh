@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="spar — вторая модель, которая возражает" width="100%">
+  <img src="assets/banner.svg?v=2" alt="spar — вторая модель, которая возражает" width="100%">
 </p>
 
 <p align="center">
