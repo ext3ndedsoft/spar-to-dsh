@@ -64,24 +64,24 @@
   </g>
 
   
-  <g font-family="Consolas,'Cascadia Mono',SFMono-Regular,Menlo,monospace" font-size="13">
+  <g font-family="Consolas,'Cascadia Mono',SFMono-Regular,Menlo,monospace" font-size="12">
     <g transform="translate(72 226)">
-      <rect width="188" height="34" rx="17" fill="#ffffff" fill-opacity="0.04" stroke="#9aa8ff" stroke-opacity="0.35"/>
+      <rect width="181" height="34" rx="17" fill="#ffffff" fill-opacity="0.04" stroke="#9aa8ff" stroke-opacity="0.35"/>
       <circle cx="17" cy="17" r="4" fill="#9aa8ff"/>
       <text x="30" y="21.5" fill="#e9ebf5">open</text>
-      <text x="72" y="21.5" fill="#7d8296">starts a debate</text>
+      <text x="69" y="21.5" fill="#7d8296">starts a debate</text>
     </g>
-    <g transform="translate(272 226)">
-      <rect width="218" height="34" rx="17" fill="#ffffff" fill-opacity="0.04" stroke="#ff9a7d" stroke-opacity="0.35"/>
+    <g transform="translate(265 226)">
+      <rect width="209" height="34" rx="17" fill="#ffffff" fill-opacity="0.04" stroke="#ff9a7d" stroke-opacity="0.35"/>
       <circle cx="17" cy="17" r="4" fill="#ff9a7d"/>
       <text x="30" y="21.5" fill="#e9ebf5">result</text>
-      <text x="84" y="21.5" fill="#7d8296">fetches the reply</text>
+      <text x="80" y="21.5" fill="#7d8296">fetches the reply</text>
     </g>
-    <g transform="translate(502 226)">
-      <rect width="238" height="34" rx="17" fill="#ffffff" fill-opacity="0.04" stroke="#f0c674" stroke-opacity="0.4"/>
+    <g transform="translate(486 226)">
+      <rect width="224" height="34" rx="17" fill="#ffffff" fill-opacity="0.04" stroke="#f0c674" stroke-opacity="0.4"/>
       <circle cx="17" cy="17" r="4" fill="#f0c674"/>
       <text x="30" y="21.5" fill="#e9ebf5">verdict</text>
-      <text x="94" y="21.5" fill="#7d8296">delivers a verdict</text>
+      <text x="89" y="21.5" fill="#7d8296">delivers a verdict</text>
     </g>
   </g>
 
