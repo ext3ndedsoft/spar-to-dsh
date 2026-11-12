@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "dsh-plugin-spar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "A second model that argues back: adversarial debates between the calling agent and another provider route, judged in a clean context and rendered as its own voice in the web client",
   "type": "module",

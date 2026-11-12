@@ -24,6 +24,8 @@ const React = {
     return [initial, () => {}];
   },
   useEffect: () => {},
+  useMemo: (fn) => fn(),
+  useRef: (initial) => ({ current: initial }),
   createElement: () => ({}),
 };
 
@@ -105,6 +107,8 @@ function strings(node, out = []) {
     return out;
   }
   if (typeof node === "object") {
+    // Components are expanded the way the renderer would, hooks mocked above.
+    if (typeof node.type === "function") return strings(node.type(node.props), out);
     if (node.children !== undefined) strings(node.children, out);
     if (node.props !== undefined) strings(node.props?.children, out);
   }

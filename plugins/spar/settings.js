@@ -158,6 +158,31 @@ export async function modelCatalog(llm) {
   return { providers, models };
 }
 
+const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i;
+
+/**
+ * Null when the request comes from this machine's own page; otherwise why not.
+ * The Host check stops DNS rebinding (a foreign name pointed at 127.0.0.1); the
+ * Origin check stops another site's page from posting to the local server.
+ */
+export function sameOriginRefusal(req) {
+  const host = String(req.headers?.host ?? "");
+  if (!LOCAL_HOST.test(host)) return `unexpected Host header: ${host.slice(0, 80)}`;
+  const origin = req.headers?.origin;
+  if (typeof origin === "string" && origin !== "" && origin !== "null") {
+    let parsed;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      return "malformed Origin header";
+    }
+    if (parsed.host.toLowerCase() !== host.toLowerCase()) return `cross-origin request refused: ${parsed.host}`;
+  } else if (origin === "null") {
+    return "opaque Origin refused";
+  }
+  return null;
+}
+
 /** Read a small JSON body without trusting its size. */
 export function readJsonBody(req, limit = 16 * 1024) {
   return new Promise((resolve, reject) => {
@@ -194,6 +219,17 @@ export function settingsHandler({ store, effective, debates }) {
       res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       res.end(JSON.stringify(body));
     };
+    const refusal = sameOriginRefusal(req);
+    if (refusal !== null) {
+      send(403, { error: refusal });
+      return;
+    }
+    if (req.method === "POST" && !/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
+      // A cross-site form or `no-cors` fetch can only send simple content types;
+      // demanding JSON forces a preflight that a foreign page cannot pass.
+      send(415, { error: "content-type must be application/json" });
+      return;
+    }
     if (req.method === "GET" || req.method === "HEAD") {
       send(200, { saved: store.read(), effective: effective(), debates: debates() });
       return;
