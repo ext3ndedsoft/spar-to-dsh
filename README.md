@@ -81,8 +81,22 @@ cd spar-to-dsh
 node install.mjs
 ```
 
-Скрипт копирует плагин в `~/.dsh/profiles/web/plugins/spar`, дописывает запись
-в `cordis.patch.yml` и создаёт `~/.dsh/spar` под транскрипты. Перезапустите
+Без клона — скачать один файл, остальное он подтянет сам:
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/ext3ndedsoft/spar-to-dsh/main/install.mjs -OutFile install.mjs; node install.mjs
+```
+
+```bash
+# macOS / Linux
+curl -fsSLO https://raw.githubusercontent.com/ext3ndedsoft/spar-to-dsh/main/install.mjs && node install.mjs
+```
+
+Установщик сам находит профиль DSH, копирует плагин, дописывает запись в
+`cordis.patch.yml` (копия сохраняется как `.bak`) и проверяет синтаксис.
+Обновление — тот же запуск ещё раз, удаление — `node install.mjs --uninstall`,
+посмотреть без записи — `--dry-run`. Перезапустите
 оболочку — пилюля `◈` появится в правом нижнем углу, и первым делом выберите
 модели в ней.
 

@@ -64,9 +64,22 @@ cd spar-to-dsh
 node install.mjs
 ```
 
-The script copies the plugin into `~/.dsh/profiles/web/plugins/spar`, appends one
-entry to `cordis.patch.yml` and creates `~/.dsh/spar` for transcripts. Restart the
-shell and the `◈` pill appears.
+Without a clone — download one file and it fetches the rest itself:
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/ext3ndedsoft/spar-to-dsh/main/install.mjs -OutFile install.mjs; node install.mjs
+```
+
+```bash
+# macOS / Linux
+curl -fsSLO https://raw.githubusercontent.com/ext3ndedsoft/spar-to-dsh/main/install.mjs && node install.mjs
+```
+
+The installer finds the DSH profile, copies the plugin, appends one entry to
+`cordis.patch.yml` (a copy is saved as `.bak`) and checks the syntax. To update,
+run it again; to remove, `node install.mjs --uninstall`; to preview, `--dry-run`.
+Restart the shell and the `◈` pill appears.
 
 Step-by-step, with the manual path: [docs/install.md](docs/install.md).
 
