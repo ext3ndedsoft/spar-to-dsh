@@ -1260,25 +1260,24 @@ window.__ModuleLoader__.load({
 			const effective = state?.effective?.current ?? {};
 			const debates = Array.isArray(state?.debates) ? state.debates : [];
 
-			if (!open) {
-				return jsx("div", {
-					className: "spp",
-					children: jsxs("button", {
-						type: "button",
-						className: "pill",
-						"aria-label": "Открыть настройки спарринга",
-						onClick: () => setOpen(true),
-						title: "спарринг: модели и настройки",
-						children: [
-							jsx("span", { className: "mark", children: "◈" }),
-							jsx("b", { children: "spar" }),
-							jsx("span", { className: "live", "data-on": debates.some((row) => row.closed !== true) ? "1" : "0", "aria-hidden": "true" }),
-						],
-					}),
-				});
-			}
+			const pill = jsxs("button", {
+				type: "button",
+				className: "pill",
+				key: "pill",
+				"aria-label": open ? "Закрыть настройки спарринга" : "Открыть настройки спарринга",
+				"aria-expanded": open ? "true" : "false",
+				onClick: () => setOpen(!open),
+				title: open ? "свернуть" : "спарринг: модели и настройки",
+				children: [
+					jsx("span", { className: "mark", children: "◈" }),
+					jsx("b", { children: "spar" }),
+					jsx("span", { className: "live", "data-on": debates.some((row) => row.closed !== true) ? "1" : "0", "aria-hidden": "true" }),
+				],
+			});
 
-			const field = (id, label, hint, control) =>
+			if (!open) return jsx("div", { className: "spp", children: pill });
+
+const field = (id, label, hint, control) =>
 				jsxs("div", {
 					className: "row",
 					children: [jsxs("label", { htmlFor: id, children: [label, hint ? jsx("small", { children: hint }) : null] }), control],
@@ -1521,7 +1520,8 @@ window.__ModuleLoader__.load({
 
 			return jsx("div", {
 				className: "spp",
-				children: jsx("div", {
+				children: [jsx("div", {
+					key: "panel",
 					className: "panel",
 					role: "dialog",
 					"aria-label": "Настройки спарринга",
@@ -1572,7 +1572,7 @@ window.__ModuleLoader__.load({
 							}),
 						],
 					}),
-				}),
+				}), pill],
 			});
 		}
 
