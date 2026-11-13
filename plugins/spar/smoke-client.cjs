@@ -24,6 +24,8 @@ const React = {
     return [initial, () => {}];
   },
   useEffect: () => {},
+  useMemo: (fn) => fn(),
+  useRef: (initial) => ({ current: initial }),
   createElement: () => ({}),
 };
 
@@ -105,6 +107,8 @@ function strings(node, out = []) {
     return out;
   }
   if (typeof node === "object") {
+    // Components are expanded the way the renderer would, hooks mocked above.
+    if (typeof node.type === "function") return strings(node.type(node.props), out);
     if (node.children !== undefined) strings(node.children, out);
     if (node.props !== undefined) strings(node.props?.children, out);
   }
@@ -184,12 +188,31 @@ const cases = [
     },
     { has: ["ответ ещё не готов", "ещё пишет"] },
   ],
+  [
+    "bookkeeping opened is hidden",
+    {
+      phase: "result",
+      callId: "c1",
+      toolName: "spar",
+      block: { type: "tool-result", isError: false, content: [{ type: "text", text: 'opened d65 · some/model\nSilent start. Send your first argument with action:"say", id:"d65".' }] },
+    },
+    { empty: true },
+  ],
+  [
+    "list is hidden while it runs",
+    { phase: "start", callId: "c1", toolName: "spar", block: { name: "spar", arguments: { action: "list" } } },
+    { empty: true },
+  ],
 ];
 
 for (const [label, props, expect] of cases) {
   const tree = expand(component(props));
   const text = strings(tree).join(" | ");
-  if (text.trim() === "") throw new Error(`${label}: rendered nothing`);
+  if (expect?.empty === true) {
+    if (text.trim() !== "") throw new Error(`${label}: bookkeeping must render nothing, got "${text.slice(0, 120)}"`);
+    console.log(`${label}: ok — nothing rendered`);
+    continue;
+  }  if (text.trim() === "") throw new Error(`${label}: rendered nothing`);
   for (const needle of expect?.has ?? []) {
     if (!text.includes(needle)) throw new Error(`${label}: missing "${needle}" in "${text.slice(0, 200)}"`);
   }

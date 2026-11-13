@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { apply, __internals } from "./index.js";
-import { runTool } from "./tools.js";
+import { runTool, jailPath, assertPublicUrl, isPrivateV6 } from "./tools.js";
 import { createLiveRegistry } from "./live.js";
 
 let passed = 0;
@@ -564,10 +564,10 @@ const exec = { signal: undefined };
       body = text;
     },
   };
-  liveHandler(live)({ method: "GET", url: "/spar-live?call=call_1" }, res);
+  liveHandler(live)({ method: "GET", url: "/spar-live?call=call_1", headers: { host: "localhost:3080" } }, res);
   eq(status, 200, "route answers");
   includes(body, "первая фраза", "route returns the turn");
-  liveHandler(live)({ method: "GET", url: "/spar-live?call=nope" }, res);
+  liveHandler(live)({ method: "GET", url: "/spar-live?call=nope", headers: { host: "localhost:3080" } }, res);
   includes(body, "missing", "an unknown call is reported as missing");
 }
 
@@ -692,10 +692,20 @@ const exec = { signal: undefined };
         resolve(JSON.parse(body));
       },
     };
-    handler({ method: "GET", url: "/spar-settings" }, res);
+    handler({ method: "GET", url: "/spar-settings", headers: { host: "127.0.0.1:3080" } }, res);
   });
   eq(answer.effective.profile.opponent, "antigravity/gemini-3.8-flash", "the profile default is reported as itself");
   eq(answer.effective.current.opponent, "zexkora/deepseek-v4.1-flash-1017", "and the saved value separately");
+  // The route must refuse foreign pages and DNS-rebinding hosts, and demand JSON.
+  const ask = (req) =>
+    new Promise((resolve) => {
+      let status = 0;
+      const res = { writeHead(code) { status = code; }, end() { resolve(status); } };
+      handler(req, res);
+    });
+  eq(await ask({ method: "GET", headers: { host: "evil.example:3080" } }), 403, "a foreign Host is refused (DNS rebinding)");
+  eq(await ask({ method: "POST", headers: { host: "127.0.0.1:3080", origin: "https://evil.example", "content-type": "application/json" } }), 403, "a cross-origin POST is refused");
+  eq(await ask({ method: "POST", headers: { host: "127.0.0.1:3080", origin: "http://127.0.0.1:3080", "content-type": "text/plain" } }), 415, "a non-JSON POST is refused");
   rmSync(repo, { recursive: true, force: true });
 }
 
@@ -1004,11 +1014,11 @@ const exec = { signal: undefined };
   const { dir, cleanup } = sandboxDir("oneside");
   const { tool } = makeHarness({ dir });
   const result = await tool.execute(
-    { action: "duel", topic: "t", rounds: 1, sides: ["kimi"], challenger: "deepseek", async: false },
+    { action: "duel", topic: "t", rounds: 1, sides: ["kimi"], challenger: "gpt", async: false },
     exec,
   );
   includes(result.text, "kimi", "the named side is the one that argues FOR");
-  includes(result.text, "deepseek", "and challenger takes the other corner");
+  includes(result.text, "gpt-6.1-sol", "and challenger takes the other corner");
   cleanup();
 }
 
@@ -1248,6 +1258,110 @@ const exec = { signal: undefined };
   ok(routes.length === 4, "all four routes, not zero", `registered ${routes.length}`);
   cleanup();
 }
+// 40. hardening: path tricks, private URLs, free-form commands, git config, ReDoS
+{
+  const repo = mkdtempSync(path.join(tmpdir(), "spar-harden-"));
+  writeFileSync(path.join(repo, ".env"), "SECRET=1");
+  writeFileSync(path.join(repo, "a.txt"), "hello");
+  const refuses = (fn) => { try { fn(); return false; } catch { return true; } };
+  ok(refuses(() => jailPath(repo, ".env:stream")), "an NTFS alternate data stream name is refused");
+  ok(refuses(() => jailPath(repo, ".env.")), "a trailing dot (which Windows strips) is refused");
+  ok(refuses(() => jailPath(repo, ".git/hooks/pre-commit")), "the whole .git directory is off limits");
+  ok(!refuses(() => jailPath(repo, "a.txt")), "an ordinary file still opens");
+  ok(refuses(() => assertPublicUrl("http://[::1]:3080/x")), "IPv6 loopback is refused");
+  ok(refuses(() => assertPublicUrl("http://[fd00::1]/")), "IPv6 unique-local is refused");
+  ok(refuses(() => assertPublicUrl("http://[::ffff:7f00:1]/")), "a v4-mapped IPv6 loopback is refused");
+  ok(isPrivateV6("fe80::1"), "link-local IPv6 is private");
+  ok(!isPrivateV6("2606:4700::1111"), "a public IPv6 address is not private");
+  const run = runTool(repo, "run", { command: 'node -e "process.exit(0)"' });
+  includes(run, "error:", "an arbitrary node -e command is refused");
+  const grep = runTool(repo, "grep", { pattern: "(a+)+$" });
+  includes(grep, "error:", "a nested-quantifier pattern is refused instead of hanging");
+  rmSync(repo, { recursive: true, force: true });
+}
+
+// 41. the caller's argument is on disk before the opponent answers, and a busy debate refuses a second say
+{
+  const { dir, cleanup } = sandboxDir("busyguard");
+  const { tool } = makeHarness({ dir, text: "ответ", delayMs: 400 });
+  await tool.execute({ action: "open", topic: "x", opening: "me" }, exec);
+  await tool.execute({ action: "say", id: "d1", message: "МОЙ-ПЕРВЫЙ-АРГУМЕНТ", async: true }, exec);
+  const shown = await tool.execute({ action: "show", id: "d1" }, exec);
+  includes(shown.text, "МОЙ-ПЕРВЫЙ-АРГУМЕНТ", "the question is visible while the reply is still being written");
+  let refused = "";
+  try {
+    await tool.execute({ action: "say", id: "d1", message: "второй", async: true }, exec);
+  } catch (error) {
+    refused = String(error?.message ?? error);
+  }
+  includes(refused, "still writing", "a second say on a busy debate is refused, not silently dropped");
+  let closeRefused = "";
+  try {
+    await tool.execute({ action: "close", id: "d1" }, exec);
+  } catch (error) {
+    closeRefused = String(error?.message ?? error);
+  }
+  includes(closeRefused, "still writing", "close is refused under a running turn");
+  cleanup();
+}
+// 60. the judge chosen in the settings never debates, and a dead opponent is not swapped
+{
+  const { dir, cleanup } = sandboxDir("judgeguard");
+  const { tool } = makeHarness({ dir });
+  const attempt = async (args) => {
+    try {
+      await tool.execute({ ...args, async: false }, exec);
+      return "";
+    } catch (error) {
+      return String(error?.message ?? error);
+    }
+  };
+  // `deepseek` is the judge in the fixture: by alias and by exact route.
+  includes(await attempt({ action: "open", topic: "t", opponent: "deepseek" }), "судьёй", "the judge cannot be picked as the opponent by alias");
+  includes(
+    await attempt({ action: "open", topic: "t", opponent: "zexkora/deepseek-v4.1-flash-1017" }),
+    "судьёй",
+    "nor by exact provider/model",
+  );
+  includes(await attempt({ action: "duel", topic: "t", sides: ["gemini", "deepseek"] }), "судьёй", "nor in a duel");
+  eq(await attempt({ action: "open", topic: "t", opponent: "kimi", opening: "me" }), "", "any other model still opens a debate");
+  cleanup();
+}
+// 61. the operator may allow the judge to debate; nothing else changes
+{
+  const { dir, cleanup } = sandboxDir("selfjudgeon");
+  const { tool } = makeHarness({ dir, config: { selfJudge: true } });
+  const attempt = async (args) => {
+    try {
+      await tool.execute({ ...args, async: false }, exec);
+      return "";
+    } catch (error) {
+      return String(error?.message ?? error);
+    }
+  };
+  eq(await attempt({ action: "open", topic: "t", opponent: "deepseek", opening: "me" }), "", "with the switch on the judge may be the opponent");
+  eq(await attempt({ action: "say", id: "d1", message: "аргумент" }), "", "and the debate runs");
+  eq(await attempt({ action: "verdict", id: "d1", judge: "deepseek" }), "", "and the same model may then rule on it");
+  cleanup();
+  const { normalizeSettings } = await import("./settings.js");
+  const kept = normalizeSettings({ selfJudge: false, tools: true });
+  eq(kept.selfJudge, false, "an explicit false is kept, not dropped");
+  eq(normalizeSettings({ selfJudge: "yes" }).selfJudge, undefined, "a non-boolean switch is rejected");
+}
+{
+  const { dir, cleanup } = sandboxDir("nosubstitute");
+  const { tool } = makeHarness({ dir, finish: { kind: "aborted", failure: { code: "TIMEOUT", message: "180s" } } });
+  let message = "";
+  try {
+    await tool.execute({ action: "open", topic: "t", async: false }, exec);
+  } catch (error) {
+    message = String(error?.message ?? error);
+  }
+  includes(message, "aborted after", "a timed-out opponent fails the call");
+  includes(message, "Не подставляй другую модель", "and the failure carries the do-not-swap instruction");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

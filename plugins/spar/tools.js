@@ -21,12 +21,13 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { lookup } from "node:dns/promises";
 import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 /** Paths that are never evidence: credentials, keys, and the git config. */
 const DENIED = [
 	/(^|[\\/])\.env(\..*)?$/i,
-	/(^|[\\/])\.git[\\/]config$/i,
+	/(^|[\\/])\.git([\\/]|$)/i,
 	/(^|[\\/])(id_rsa|id_ed25519|id_ecdsa)(\.pub)?$/i,
 	/(^|[\\/])[^\\/]*\.(pem|key|p12|pfx|jks|keystore)$/i,
 	// `tokens.ts` is a lexer, not a secret. Denying the bare stem hides ordinary
@@ -178,17 +179,26 @@ export function jailPath(root, candidate) {
 	const rel = relative(root, absolute);
 	if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) throw new Error(`path escapes the debate root: ${text}`);
 	const portable = rel.split(sep).join("/");
+	// Windows quirks that sidestep the name checks below: `.env:stream` (an NTFS
+	// alternate data stream) and `.env.` / `.env ` (trailing dots and spaces are
+	// stripped by the filesystem, so they open `.env`).
+	if (portable.includes(":") || portable.split("/").some((part) => /[. ]$/.test(part))) {
+		throw new Error(`path is denied by policy: ${text}`);
+	}
 	if (isDenied(portable)) throw new Error(`path is denied by policy: ${text}`);
 	// `resolve` is lexical: a symlink inside the root still points wherever it
 	// points, so `read` would happily follow it out of the project. The link itself
 	// is not evidence, and neither is what it opens.
 	try {
-		const realRoot = realpathSync(root);
-		const realTarget = realpathSync(absolute);
+		// `.native` expands 8.3 short names (`ENV~1`) and junctions, so the denial
+		// list is checked against the name the file really has.
+		const realRoot = realpathSync.native(root);
+		const realTarget = realpathSync.native(absolute);
 		const realRel = relative(realRoot, realTarget);
 		if (realRel.startsWith("..") || isAbsolute(realRel)) {
 			throw new Error(`path escapes the debate root through a link: ${text}`);
 		}
+		if (isDenied(realRel.split(sep).join("/"))) throw new Error(`path is denied by policy: ${text}`);
 	} catch (error) {
 		if (error?.code !== "ENOENT" && error?.code !== "ENOTDIR") throw error;
 	}
@@ -336,6 +346,11 @@ function listDir(absolute, rel) {
 function grepRepo(root, args) {
 	const pattern = typeof args.pattern === "string" ? args.pattern : "";
 	if (pattern === "") throw new Error("pattern is required");
+	// Catastrophic backtracking blocks the whole host process, and a sync regex
+	// cannot be interrupted. Refuse the classic nested-quantifier shapes up front.
+	if (pattern.length > 300 || /\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)\s*[+*{]/.test(pattern) || /\\[1-9]\s*[+*{]/.test(pattern)) {
+		throw new Error("pattern rejected: nested or repeated quantifiers can hang the search — simplify it");
+	}
 	let regex;
 	try {
 		regex = new RegExp(pattern, "i");
@@ -347,7 +362,12 @@ function grepRepo(root, args) {
 	let bytes = 0;
 	let scanned = 0;
 	const walkState = {};
+	const deadline = Date.now() + 8_000;
 	for (const rel of walk(root, MAX_WALK_FILES, { state: walkState })) {
+		if (Date.now() > deadline) {
+			matches.push(`… stopped: time budget spent after ${scanned} files — this is not a complete search`);
+			break;
+		}
 		if (fileFilter !== undefined && !fileFilter.test(rel)) continue;
 		let text;
 		try {
@@ -361,7 +381,7 @@ function grepRepo(root, args) {
 		scanned += 1;
 		const lines = text.split("\n");
 		for (let index = 0; index < lines.length; index += 1) {
-			if (!regex.test(lines[index])) continue;
+			if (!regex.test(lines[index].length > 2000 ? lines[index].slice(0, 2000) : lines[index])) continue;
 			const line = `${rel}:${index + 1}: ${lines[index].slice(0, 300)}`;
 			if (bytes + line.length > MAX_GREP_BYTES || matches.length >= MAX_GREP_MATCHES) {
 				matches.push(`… stopped after ${matches.length} matches (${scanned} files scanned)`);
@@ -406,8 +426,17 @@ function globRepo(root, args) {
 function gitRepo(root, args) {
 	const sub = typeof args.sub === "string" ? args.sub : "";
 	const pathspec = typeof args.path === "string" ? args.path.trim() : "";
+	// Repo-local config can name programs to run (core.fsmonitor, diff.external,
+	// textconv, pager). Override them on the command line and ignore the rest.
+	const SAFE = ["-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "core.hooksPath=NUL", "-c", "diff.external=", "--no-pager"];
+	if (pathspec !== "" && (pathspec.startsWith("-") || pathspec.startsWith(":") || isDenied(pathspec.replace(/\\/g, "/")))) {
+		throw new Error(`git path is not allowed: ${pathspec}`);
+	}
+	// Secrets must not leak through a diff either: exclude them from the pathspec.
+	const HIDE = [":(exclude,glob)**/.env", ":(exclude,glob)**/.env.*", ":(exclude,glob)**/*.pem", ":(exclude,glob)**/*.key", ":(exclude,glob)**/id_rsa*", ":(exclude,glob)**/id_ed25519*", ":(exclude,glob)**/.npmrc"];
 	const run = (argv) =>
-		execFileSync("git", argv, {
+		execFileSync("git", [...SAFE, ...argv], {
+			env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0" },
 			cwd: root,
 			encoding: "utf8",
 			timeout: 10_000,
@@ -420,8 +449,8 @@ function gitRepo(root, args) {
 		// `git diff` alone shows unstaged work only: a caller that ran `git add`
 		// gets "nothing to show" and the model concludes nothing changed. Both
 		// halves are reported, and each half says which one it is.
-		const flags = args.stat === true ? ["--stat"] : [];
-		const tail = pathspec === "" ? [] : ["--", pathspec];
+		const flags = ["--no-ext-diff", "--no-textconv", ...(args.stat === true ? ["--stat"] : [])];
+		const tail = ["--", ...(pathspec === "" ? ["."] : [pathspec]), ...HIDE];
 		const staged = run(["diff", "--cached", ...flags, ...tail]);
 		const unstaged = run(["diff", ...flags, ...tail]);
 		const parts = [];
@@ -430,7 +459,7 @@ function gitRepo(root, args) {
 		output = parts.length === 0 ? "" : parts.join("\n");
 	}
 	else if (sub === "log") output = run(["log", "--oneline", "-n", "20", ...(pathspec === "" ? [] : ["--", pathspec])]);
-	else if (sub === "ls-files") output = run(["ls-files"]);
+	else if (sub === "ls-files") output = run(["ls-files"]).split("\n").filter((line) => !isDenied(line)).join("\n");
 	else throw new Error(`unsupported git subcommand: ${sub}`);
 	if (output.trim() === "") return `git ${sub}: nothing to show`;
 	return output.length > MAX_GIT_BYTES ? `${output.slice(0, MAX_GIT_BYTES)}\n… truncated` : output;
@@ -641,6 +670,15 @@ export function htmlToText(html) {
 		.replace(/^\s+|\s+$/g, "");
 }
 
+/** Loopback, unspecified, unique-local, link-local, and v4-mapped IPv6 literals. */
+export function isPrivateV6(host) {
+	const h = host.toLowerCase();
+	if (h === "::" || h === "::1") return true;
+	if (/^f[cd][0-9a-f]{0,2}:/.test(h) || /^fe[89ab][0-9a-f]?:/.test(h)) return true;
+	if (h.startsWith("::ffff:")) return true; // v4-mapped: judge by the v4 side, and refuse conservatively
+	return false;
+}
+
 /** A URL is fetchable only if it is public http(s): the tool must not become a LAN probe. */
 export function assertPublicUrl(raw) {
 	let url;
@@ -650,7 +688,8 @@ export function assertPublicUrl(raw) {
 		throw new Error(`not a URL: ${String(raw).slice(0, 80)}`);
 	}
 	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`only http(s) URLs can be fetched, got ${url.protocol}`);
-	const host = url.hostname.toLowerCase();
+	const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+	if (host.includes(":") && isPrivateV6(host)) throw new Error(`refusing to fetch a private address: ${host}`);
 	if (host === "localhost" || host === "::1" || host.endsWith(".local") || host.endsWith(".internal")) {
 		throw new Error(`refusing to fetch a local host: ${host}`);
 	}
@@ -662,6 +701,37 @@ export function assertPublicUrl(raw) {
 		if (privateV4) throw new Error(`refusing to fetch a private address: ${host}`);
 	}
 	return url.toString();
+}
+
+async function readCapped(response, max) {
+	if (response.body === null || typeof response.body.getReader !== "function") {
+		return Buffer.from(await response.arrayBuffer()).subarray(0, max);
+	}
+	const reader = response.body.getReader();
+	const chunks = [];
+	let size = 0;
+	while (size < max) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		chunks.push(Buffer.from(value));
+		size += value.length;
+	}
+	try { await reader.cancel(); } catch { /* already closed */ }
+	return Buffer.concat(chunks).subarray(0, max);
+}
+
+async function assertPublicHost(hostname) {
+	const host = hostname.replace(/^\[|\]$/g, "");
+	let addresses;
+	try {
+		addresses = await lookup(host, { all: true });
+	} catch {
+		return; // unresolvable: fetch will fail with its own honest message
+	}
+	for (const { address } of addresses) {
+		const probe = address.includes(":") ? `http://[${address}]/` : `http://${address}/`;
+		assertPublicUrl(probe);
+	}
 }
 
 const WEB_TIMEOUT_MS = 20_000;
@@ -699,12 +769,24 @@ export async function webRun(args, timeoutMs = WEB_TIMEOUT_MS) {
 	if (action === "fetch") {
 		const url = assertPublicUrl(args?.url);
 		const started = Date.now();
-		const response = await attempt(url, {
-			redirect: "follow",
-			signal: AbortSignal.timeout(timeoutMs),
-			headers: { "user-agent": "Mozilla/5.0 (compatible; spar/1.6; +https://github.com/ext3ndedsoft/spar-to-dsh)" },
-		});
-		const buffer = Buffer.from(await response.arrayBuffer()).subarray(0, WEB_MAX_BYTES);
+		// Follow redirects by hand: each hop is checked, so a public page cannot bounce
+		// the tool to http://127.0.0.1/. DNS is resolved too, because a public name
+		// can point at a private address.
+		let target = url;
+		let response;
+		for (let hop = 0; hop <= 5; hop += 1) {
+			await assertPublicHost(new URL(target).hostname);
+			response = await attempt(target, {
+				redirect: "manual",
+				signal: AbortSignal.timeout(timeoutMs),
+				headers: { "user-agent": "Mozilla/5.0 (compatible; spar/1.6; +https://github.com/ext3ndedsoft/spar-to-dsh)" },
+			});
+			const next = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
+			if (next === null) break;
+			if (hop === 5) throw new Error("too many redirects");
+			target = assertPublicUrl(new URL(next, target).toString());
+		}
+		const buffer = await readCapped(response, WEB_MAX_BYTES);
 		const html = buffer.toString("utf8");
 		const text = htmlToText(/<html|<!doctype/i.test(html) ? html : html);
 		const body = text.length > WEB_TEXT_CHARS ? `${text.slice(0, WEB_TEXT_CHARS)}\n… (${text.length - WEB_TEXT_CHARS} characters cut)` : text;
@@ -749,7 +831,18 @@ function runProject(root, args) {
 	const timeoutMs = Math.min(600_000, Math.max(1_000, Math.trunc(Number(args.timeoutMs) || 120_000)));
 	if (typeof args.command === "string" && args.command.trim() !== "") {
 		const { bin, args: argv } = parseRunCommand(args.command);
-		return runTests(root, { label: `${bin} ${argv.join(" ")}`.trim(), bin, args: argv, source: "named by the caller" }, timeoutMs);
+		// `node -e` / `python -c` / `npx <anything>` would be arbitrary code. Only a
+		// command the project itself declares (package.json script, Makefile, ...)
+		// may run; anything else is refused with the list of what is allowed.
+		const wanted = `${bin} ${argv.join(" ")}`.trim();
+		const declared = detectRunners(root);
+		const match = declared.find((runner) => `${runner.bin} ${runner.args.join(" ")}`.trim() === wanted);
+		if (match === undefined) {
+			throw new Error(
+				`spar run: "${wanted}" is not a test command this project declares. Declared: ${declared.map((runner) => `${runner.bin} ${runner.args.join(" ")}`).join(" | ") || "none"}`,
+			);
+		}
+		return runTests(root, { ...match, source: `${match.source} (named by the caller)` }, timeoutMs);
 	}
 	const runners = detectRunners(root);
 	if (runners.length === 0) {

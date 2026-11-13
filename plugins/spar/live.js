@@ -10,6 +10,8 @@
  * card can only ever read its own turn and never has to guess a debate id.
  */
 
+import { sameOriginRefusal } from "./settings.js";
+
 const KEEP_MS = 10 * 60 * 1000;
 /** A turn that has not touched its entry for this long is not writing any more. */
 const IDLE_MS = 8 * 60 * 1000;
@@ -28,7 +30,10 @@ export function createLiveRegistry() {
   const prune = () => {
     const now = Date.now();
     for (const [key, state] of runs) {
-      if (state.done === true && now - (state.settledAt ?? state.startedAt) > KEEP_MS) runs.delete(key);
+      // Finished turns age out from settling; unfinished ones from their last
+      // sign of life, so a crashed turn cannot sit in memory forever.
+      const last = state.done === true ? (state.settledAt ?? state.startedAt) : state.at;
+      if (now - last > KEEP_MS) runs.delete(key);
     }
   };
 
@@ -172,6 +177,12 @@ export function createLiveRegistry() {
  */
 export function liveHandler(registry) {
   return (req, res) => {
+    const refusal = sameOriginRefusal(req);
+    if (refusal !== null) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: refusal }));
+      return;
+    }
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405, { "content-type": "application/json" });
       res.end('{"error":"method not allowed"}');

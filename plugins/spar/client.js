@@ -23,233 +23,146 @@ window.__ModuleLoader__.load({
 
 		const CSS = `
 [data-spar-card] {
-	border-radius: 12px;
-	border: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,0.09));
-	background: var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.03));
-	padding: 12px 14px 10px;
-	margin: 6px 0;
-	overflow: hidden;
+	--spar-fg: var(--dsw-alias-label-primary, #ececec);
+	--spar-dim: var(--dsw-alias-label-tertiary, #8a8a93);
+	--spar-line: var(--dsw-alias-border-l1, rgba(255,255,255,0.09));
+	--spar-surface: var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.035));
+	--spar-gold: #e5b83a;
+	--spar-bad: var(--dsw-alias-state-error-primary, #f87171);
 	position: relative;
+	margin: 8px 0;
+	padding: 12px 14px 13px 17px;
+	border: 1px solid var(--spar-line);
+	border-radius: 12px;
+	background: var(--spar-surface);
+	color: var(--spar-fg);
+	overflow: hidden;
+	transition: border-color .2s ease, background .2s ease;
 }
+/* The rail is the speaker: model family colour, gold for the judge, red for a failure. */
 [data-spar-card]::before {
+	content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+	background: var(--spar-mark, var(--spar-rail, #6b7280)); opacity: .9;
+}
+[data-spar-card][data-state="running"] { border-color: color-mix(in srgb, var(--spar-tint, #6b7280) 38%, var(--spar-line)); }
+[data-spar-card][data-state="running"]::after {
 	content: "";
-	position: absolute;
-	inset: 0 auto 0 0;
-	width: 2px;
-	background: var(--spar-rail, linear-gradient(180deg, #4c8dff, #a78bfa));
-	opacity: 0.9;
+	position: absolute; left: 3px; right: 0; top: 0; height: 1.5px;
+	background: linear-gradient(90deg, transparent, var(--spar-tint, #6b7280), transparent);
+	background-size: 40% 100%;
+	background-repeat: no-repeat;
+	animation: spar-sweep 1.6s ease-in-out infinite;
+}
+[data-spar-card][data-kind="verdict"] {
+	--spar-mark: linear-gradient(180deg, #f2cc5a, #b8860b);
+	border-color: color-mix(in srgb, var(--spar-gold) 34%, var(--spar-line));
+	background: linear-gradient(180deg, color-mix(in srgb, var(--spar-gold) 6%, transparent), transparent 120px), var(--spar-surface);
 }
 [data-spar-card][data-state="error"] {
-	border-color: var(--dsw-alias-state-error-primary, #f87171);
+	--spar-mark: var(--spar-bad);
+	border-color: color-mix(in srgb, var(--spar-bad) 36%, var(--spar-line));
+	background: linear-gradient(180deg, color-mix(in srgb, var(--spar-bad) 6%, transparent), transparent 120px), var(--spar-surface);
 }
-[data-spar-card][data-state="error"]::before {
-	background: var(--dsw-alias-state-error-primary, #f87171);
+[data-spar-card][data-kind="note"] { padding-top: 9px; padding-bottom: 10px; }
+[data-spar-card][data-state="past"] { padding: 7px 12px 7px 15px; cursor: pointer; background: transparent; }
+[data-spar-card][data-state="past"]::before { opacity: .45; }
+[data-spar-card][data-state="past"]:hover, [data-spar-card][data-state="past"]:focus-visible { border-color: var(--spar-dim); outline: none; }
+
+[data-spar-head] { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; font-size: 12px; min-width: 0; }
+[data-spar-card][data-state="past"] [data-spar-head] { margin-bottom: 0; }
+[data-spar-avatar] {
+	flex: none; width: 24px; height: 24px; border-radius: 50%;
+	display: inline-flex; align-items: center; justify-content: center;
+	font-size: 11.5px; font-weight: 700; color: #07070a; letter-spacing: 0;
+	background: var(--spar-mark, var(--spar-rail, #6b7280));
 }
-[data-spar-card][data-state="utility"] {
-	background: transparent;
-	padding: 8px 12px;
-}
-[data-spar-head] {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 8px;
-	font-size: 12px;
-}
-[data-spar-badge] {
-	width: 18px; height: 18px;
-	border-radius: 6px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 11px;
-	font-weight: 600;
-	color: #fff;
-	background: var(--spar-rail, linear-gradient(160deg, #4c8dff, #a78bfa));
-	flex: none;
-}
-[data-spar-name] {
-	color: var(--dsw-alias-label-primary, #f0f0f0);
-	font-weight: 550;
-	letter-spacing: 0.01em;
-}
+[data-spar-card][data-kind="verdict"] [data-spar-avatar] { background: linear-gradient(135deg, #f2cc5a, #c8921a); }
+[data-spar-card][data-state="error"] [data-spar-avatar] { background: var(--spar-bad); }
+[data-spar-who] { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+[data-spar-name] { font-weight: 600; font-size: 12.5px; color: var(--spar-fg); }
+[data-spar-model] { font-size: 10.5px; color: var(--spar-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-spar-tag] {
-	color: var(--dsw-alias-label-tertiary, #7b7b7b);
-	font-size: 11px;
-	padding: 1px 6px;
-	border-radius: 999px;
-	border: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,0.09));
-	white-space: nowrap;
+	font-size: 10.5px; line-height: 1.5; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
+	color: var(--spar-dim); background: color-mix(in srgb, var(--spar-fg) 7%, transparent);
 }
-[data-spar-meta] {
-	margin-left: auto;
-	color: var(--dsw-alias-label-tertiary, #7b7b7b);
-	font-size: 11px;
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
+[data-spar-tag][data-tone="live"] { color: var(--spar-tint, #4c8dff); background: color-mix(in srgb, var(--spar-tint, #4c8dff) 15%, transparent); }
+[data-spar-tag][data-tone="verdict"] { color: var(--spar-gold); background: color-mix(in srgb, var(--spar-gold) 15%, transparent); }
+[data-spar-tag][data-tone="error"] { color: var(--spar-bad); background: color-mix(in srgb, var(--spar-bad) 15%, transparent); }
+[data-spar-meta] { margin-left: auto; font-size: 11px; color: var(--spar-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+[data-spar-tools] { display: inline-flex; gap: 2px; margin-left: 2px; }
+[data-spar-icon] {
+	appearance: none; border: 0; background: transparent; color: var(--spar-dim); opacity: .55;
+	border-radius: 7px; padding: 3px 6px; font-size: 13px; line-height: 1; cursor: pointer; font-family: inherit;
+	transition: opacity .15s, background .15s, color .15s;
 }
-[data-spar-body] {
-	color: var(--dsw-alias-label-primary, #e8e8e8);
-	font-size: 13.5px;
-	line-height: 1.62;
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
+[data-spar-card]:hover [data-spar-icon], [data-spar-icon]:focus-visible { opacity: 1; }
+[data-spar-icon]:hover, [data-spar-icon]:focus-visible { color: var(--spar-fg); background: color-mix(in srgb, var(--spar-fg) 9%, transparent); outline: none; }
+
+[data-spar-mine] {
+	margin: 0 0 11px; padding: 7px 11px; border-radius: 8px;
+	font-size: 12px; line-height: 1.5; color: var(--spar-dim);
+	background: color-mix(in srgb, var(--spar-fg) 4%, transparent);
+	white-space: pre-wrap; max-height: 7.2em; overflow: auto;
 }
-[data-spar-body] > * + * { margin-top: 8px; }
+[data-spar-mine]::before {
+	content: attr(data-label); display: block; margin-bottom: 2px;
+	font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase; opacity: .7;
+}
+[data-spar-body], [data-spar-stream] { font-size: 13.5px; line-height: 1.62; color: var(--spar-fg); overflow-wrap: anywhere; }
+[data-spar-body] > div > div, [data-spar-stream] [data-spar-body] > div > div { margin: 0 0 7px; }
+[data-spar-body] > div > div:last-child { margin-bottom: 0; }
+[data-spar-body] strong { font-weight: 650; }
 [data-spar-body] code {
-	font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-	font-size: 12.5px;
-	background: var(--dsw-alias-markdown-inline-code, rgba(255,255,255,0.06));
-	padding: 1px 5px;
-	border-radius: 5px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+	padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--spar-fg) 9%, transparent);
 }
 [data-spar-body] pre {
-	margin: 0;
-	padding: 10px 12px;
-	border-radius: 8px;
-	overflow-x: auto;
-	background: var(--dsw-alias-markdown-code-block, rgba(255,255,255,0.05));
-	border: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,0.07));
+	margin: 6px 0; padding: 10px 12px; border-radius: 10px; overflow: auto; max-height: 24em;
+	background: rgba(0,0,0,0.32); border: 1px solid var(--spar-line);
 }
-[data-spar-body] pre code {
-	background: none;
-	padding: 0;
-	font-size: 12.5px;
-	line-height: 1.5;
-	white-space: pre;
+[data-spar-body] pre code { padding: 0; background: none; font-size: 12px; line-height: 1.55; }
+[data-spar-clamp] { max-height: 15.5em; overflow: hidden; position: relative; }
+[data-spar-clamp]::after {
+	content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3.4em; pointer-events: none;
+	background: linear-gradient(transparent, var(--dsw-alias-bg-layer-1, #17171b));
 }
-[data-spar-foot] {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	margin-top: 8px;
-	font-size: 11px;
-	color: var(--dsw-alias-label-tertiary, #7b7b7b);
+[data-spar-steps] { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 9px; }
+[data-spar-chip] {
+	display: inline-flex; gap: 5px; align-items: baseline; max-width: 100%;
+	padding: 2px 8px; border-radius: 999px; font-size: 11px; color: var(--spar-dim);
+	background: color-mix(in srgb, var(--spar-fg) 7%, transparent);
 }
+[data-spar-chip] b { font-weight: 600; color: var(--spar-fg); }
+[data-spar-chip] span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
+[data-spar-reason] { margin: 0 0 9px; font-size: 12px; color: var(--spar-dim); }
+[data-spar-reason] summary { cursor: pointer; font-size: 11px; user-select: none; }
+[data-spar-reason] div { margin-top: 5px; padding-left: 10px; border-left: 2px solid var(--spar-line); white-space: pre-wrap; max-height: 9em; overflow: auto; }
+[data-spar-quiet] { color: var(--spar-dim); font-size: 12.5px; display: flex; gap: 8px; align-items: center; }
+[data-spar-status] { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11.5px; color: var(--spar-dim); }
+[data-spar-status][data-stalled="1"] { color: var(--dsw-alias-state-error-primary, #f87171); }
+[data-spar-dot], [data-spar-quiet]::before {
+	content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none;
+	background: var(--spar-tint, #4c8dff); animation: spar-pulse 1.1s ease-in-out infinite;
+}
+[data-spar-quiet]::before { content: ""; }
+[data-spar-foot] { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; font-size: 11px; color: var(--spar-dim); }
 [data-spar-toggle] {
-	appearance: none;
-	background: none;
-	border: 0;
-	padding: 0;
-	margin-left: auto;
-	font: inherit;
-	color: var(--dsw-alias-label-secondary, #a0a0a0);
-	cursor: pointer;
+	appearance: none; font: inherit; font-size: 11.5px; cursor: pointer; padding: 3px 10px; border-radius: 999px;
+	color: var(--spar-fg); background: transparent; border: 1px solid var(--spar-line);
 }
-[data-spar-toggle]:hover { color: var(--dsw-alias-label-primary, #f0f0f0); }
-[data-spar-receipt] {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	font-size: 11.5px;
-	color: var(--dsw-alias-label-tertiary, #8a8a8a);
-}
-[data-spar-receipt] [data-spar-toggle] {
-	font-size: 10.5px;
-	padding: 2px 9px;
-	border-radius: 99px;
-	border: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,0.12));
-	color: var(--dsw-alias-label-secondary, #a8a8a8);
-}
-[data-spar-receipt] [data-spar-toggle]:hover {
-	color: var(--dsw-alias-label-primary, #ececf1);
-	border-color: var(--dsw-alias-border-l2, rgba(255,255,255,0.22));
-}
-[data-spar-stream] {
-	display: flex;
-	flex-direction: column;
-	gap: 9px;
-	min-width: 0;
-}
-[data-spar-steps] {
-	display: flex;
-	flex-direction: column;
-	gap: 3px;
-	padding: 8px 10px;
-	border-radius: 8px;
-	background: var(--dsw-alias-bg-layer-2, rgba(255,255,255,0.025));
-	border: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,0.07));
-}
-[data-spar-step] {
-	display: flex;
-	align-items: baseline;
-	gap: 6px;
-	font-size: 11.5px;
-	line-height: 1.5;
-	color: var(--dsw-alias-label-tertiary, #8a8a8a);
-	min-width: 0;
-}
-[data-spar-step-mark] { color: var(--spar-rail, #4c8dff); opacity: 0.7; flex: none; }
-[data-spar-step-name] { color: var(--dsw-alias-label-secondary, #a8a8a8); flex: none; }
-[data-spar-step-subject] {
-	font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-	font-size: 11px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-[data-spar-reason] {
-	font-size: 12px;
-	line-height: 1.55;
-	color: var(--dsw-alias-label-tertiary, #909090);
-	white-space: pre-wrap;
-	overflow-wrap: anywhere;
-	max-height: 132px;
-	overflow: hidden;
-	padding-left: 9px;
-	border-left: 1px solid var(--dsw-alias-border-l1, rgba(255,255,255,0.09));
-	-webkit-mask-image: linear-gradient(180deg, #000 66%, transparent);
-	mask-image: linear-gradient(180deg, #000 66%, transparent);
-}
-[data-spar-card][data-state="past"] { opacity: 0.62; padding: 8px 12px; cursor: pointer; }
-[data-spar-card][data-state="past"]:hover { opacity: 0.85; }
-[data-spar-mine] {
-	color: #8ea0b5;
-	border-left: 2px solid #2f3a48;
-	padding-left: 10px;
-	margin: 0 0 8px;
-	white-space: pre-wrap;
-	word-break: break-word;
-	display: -webkit-box;
-	-webkit-line-clamp: 4;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-[data-spar-quiet] {
-	font-size: 12.5px;
-	color: var(--dsw-alias-label-tertiary, #8a8a8a);
-}
-[data-spar-status] {
-	margin-top: 9px;
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	font-size: 11.5px;
-	color: var(--dsw-alias-label-tertiary, #8a8a8a);
-}
-[data-spar-status][data-spar-stalled="1"] {
-	color: #f0a45c;
-}
-[data-spar-thinking] {
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	color: var(--dsw-alias-label-secondary, #a0a0a0);
-	font-size: 13px;
-}
-[data-spar-dot] {
-	width: 6px; height: 6px; border-radius: 50%;
-	background: #4c8dff;
-	animation: dsh-spar-pulse 1.15s ease-in-out infinite;
-}
-@keyframes dsh-spar-pulse {
-	0%, 100% { opacity: 0.25; transform: scale(0.85); }
-	50% { opacity: 1; transform: scale(1); }
-}
+[data-spar-toggle]:hover, [data-spar-toggle]:focus-visible { border-color: var(--spar-dim); outline: none; }
+[data-spar-receipt] { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--spar-dim); }
+[data-spar-cols] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+[data-spar-col] { min-width: 0; padding: 10px 12px; border-radius: 9px; background: color-mix(in srgb, var(--spar-fg) 4%, transparent) }
+[data-spar-col] > [data-spar-head] { margin-bottom: 7px; }
+@media (max-width: 720px) { [data-spar-cols] { grid-template-columns: minmax(0, 1fr); } }
+@keyframes spar-sweep { 0% { background-position: -50% 0; } 100% { background-position: 150% 0; } }
+@keyframes spar-pulse { 0%, 100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
-	[data-spar-dot] { animation: none; opacity: 0.8; }
+	[data-spar-card][data-state="running"]::after, [data-spar-dot], [data-spar-quiet]::before { animation: none; }
 }
 `;
+
 
 		const HEADER = /^\[spar\s+([^\]]*)\]\s*\n?/;
 
@@ -262,6 +175,17 @@ window.__ModuleLoader__.load({
 			if (name.includes("kimi")) return "linear-gradient(180deg, #8b5cf6, #c4b5fd)";
 			if (name.includes("deepseek")) return "linear-gradient(180deg, #3b82f6, #22d3ee)";
 			return "linear-gradient(180deg, #6b7280, #9ca3af)";
+		}
+
+		/** A flat colour for the same family, used for glows and live accents. */
+		function tintOf(model) {
+			const name = String(model ?? "").toLowerCase();
+			if (name.includes("gemini")) return "#6d8dff";
+			if (name.includes("claude")) return "#e08a62";
+			if (name.includes("gpt") || name.includes("oss")) return "#2bb894";
+			if (name.includes("kimi")) return "#9d7bf5";
+			if (name.includes("deepseek")) return "#38a6f0";
+			return "#8b93a1";
 		}
 
 		/** Split a reply into prose and fenced code so long arguments stay readable. */
@@ -344,18 +268,21 @@ window.__ModuleLoader__.load({
 		}
 
 		function Body({ text }) {
-			const parts = segments(text);
-			return jsx("div", {
-				"data-spar-body": "",
-				children: parts.map((part, index) =>
-					part.kind === "code"
-						? jsx("pre", {
-								key: index,
-								children: jsx("code", { "data-lang": part.lang || undefined, children: part.text }),
-							})
-						: jsx("div", { key: index, children: blocks(part.text) }),
-				),
-			});
+			// Parsing is the expensive part and the text only changes when it grows:
+			// memoised, a re-render for any other reason costs nothing.
+			const children = React.useMemo(
+				() =>
+					segments(text).map((part, index) =>
+						part.kind === "code"
+							? jsx("pre", {
+									key: index,
+									children: jsx("code", { "data-lang": part.lang || undefined, children: part.text }),
+								})
+							: jsx("div", { key: index, children: blocks(part.text) }),
+					),
+				[text],
+			);
+			return jsx("div", { "data-spar-body": "", children });
 		}
 
 		function rawText(block) {
@@ -380,6 +307,7 @@ window.__ModuleLoader__.load({
 			let tag = "возражение";
 			let receipt = false;
 			let pending = false;
+			let failed = false;
 			for (const field of fields) {
 				if (/^d\d+$/.test(field)) debate = field;
 				else if (field.includes("/")) model = field.slice(field.lastIndexOf("/") + 1);
@@ -408,7 +336,8 @@ window.__ModuleLoader__.load({
 				}
 			}
 			if (body.includes("[reply truncated at")) tag = `${tag} · обрезано`;
-			return { utility: false, body, model, debate, tag, ms, receipt, pending };
+			// The model catalog carries a header but is still bookkeeping.
+			return { utility: tag === "каталог", body, model, debate, tag, ms, receipt, pending, failed };
 		}
 
 		const LIVE_MS = 320;
@@ -433,7 +362,7 @@ window.__ModuleLoader__.load({
 					setCount(target);
 					return undefined;
 				}
-				const step = Math.max(1, Math.ceil((target - count) / 6));
+				const step = Math.max(8, Math.ceil((target - count) / 6));
 				const handle = requestAnimationFrame(() => setCount((value) => Math.min(target, value + step)));
 				return () => {
 					if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(handle);
@@ -465,11 +394,13 @@ window.__ModuleLoader__.load({
 							if (stopped) return;
 							if (value !== null && value.missing !== true) {
 								setTurn(value);
-								return;
+								// The question is saved before the answer: keep asking until the
+								// reply (or a recorded failure) arrives.
+								if (value.pending !== true || value.failed) return;
 							}
 							tries += 1;
 							// The turn is written at the end, so early calls miss by design.
-							if (tries < 20) timer = setTimeout(ask, 3000);
+							if (tries < 60) timer = setTimeout(ask, hiddenTab() ? 8000 : 3000);
 						})
 						.catch(() => {
 							tries += 1;
@@ -508,6 +439,11 @@ window.__ModuleLoader__.load({
 					timer = setTimeout(tick, ms);
 				};
 				const tick = () => {
+					if (hiddenTab()) {
+						// Nobody is looking: ask rarely instead of hammering the host.
+						schedule(4000);
+						return;
+					}
 					fetch(`/spar-live?call=${encodeURIComponent(callId)}`, { cache: "no-store" })
 						.then((response) => (response.ok ? response.json() : null))
 						.then((value) => {
@@ -538,6 +474,7 @@ window.__ModuleLoader__.load({
 							if (stopped) return;
 							misses += 1;
 							setState((previous) => ({ ...(previous ?? {}), known: false, stalled: misses >= STALL_AFTER && Date.now() - startedAt > STALL_FLOOR_MS }));
+							if (Date.now() - startedAt > KEEP_POLLING_MS) return;
 							schedule(LIVE_MS * 2);
 						});
 				};
@@ -548,6 +485,55 @@ window.__ModuleLoader__.load({
 				};
 			}, [callId, enabled]);
 			return state;
+		}
+
+		/**
+		 * Which call of this debate is the newest? A spawn card that has been
+		 * overtaken by a later call is a finished phase and folds to one line. Polls
+		 * only while the card could still be overtaken, never in a hidden tab, and
+		 * sets state only when the answer changed.
+		 */
+		function useNewestFor(debateId, callId, enabled) {
+			const [newest, setNewest] = React.useState(null);
+			React.useEffect(() => {
+				if (enabled !== true || debateId === "") return undefined;
+				let alive = true;
+				let timer;
+				const startedAt = Date.now();
+				const ask = () => {
+					if (hiddenTab()) {
+						timer = setTimeout(ask, 5000);
+						return;
+					}
+					fetch(`/spar-live?debate=${encodeURIComponent(debateId)}`, { cache: "no-store" })
+						.then((response) => (response.ok ? response.json() : null))
+						.then((value) => {
+							if (!alive) return;
+							const next = value?.newest ?? null;
+							if (next !== null) {
+								setNewest((previous) =>
+									previous !== null && previous.callId === next.callId && previous.done === next.done ? previous : next,
+								);
+							}
+							const overtaken = next !== null && typeof callId === "string" && next.callId !== callId;
+							const settledHere = next !== null && next.callId === callId && next.done === true;
+							// Once overtaken the answer cannot change back; once our own call is
+							// done, only a later call could overtake it, and that is rare enough
+							// to check slowly.
+							if (overtaken || Date.now() - startedAt > KEEP_POLLING_MS) return;
+							timer = setTimeout(ask, settledHere ? 8000 : 2500);
+						})
+						.catch(() => {
+							if (alive && Date.now() - startedAt <= KEEP_POLLING_MS) timer = setTimeout(ask, 5000);
+						});
+				};
+				ask();
+				return () => {
+					alive = false;
+					clearTimeout(timer);
+				};
+			}, [debateId, callId, enabled]);
+			return newest;
 		}
 
 		/** `provider/model` → `model`. */
@@ -566,439 +552,589 @@ window.__ModuleLoader__.load({
 			return modelOf(entry.route) || "спор";
 		}
 
-		function Card({ props }) {
-			const [open, setOpen] = React.useState(true);
-			const [expanded, setExpanded] = React.useState(false);
-			const raw = props.block === undefined ? "" : rawText(props.block);
-			const started = raw.includes("· started]");
-			const running = props.phase === "preparing" || props.phase === "start";
-			const live = useLiveTurn(props.callId, running || started);
-			const liveKnownNow = live !== null && live !== undefined && live.known === true;
-			// Only when memory has nothing: the registry is faster and richer while a
-			// turn is in flight, the file is the only thing that survives a restart.
-			const durable = useDurableTurn(props.callId, started === true && liveKnownNow !== true);
-			// Which card is the live one for this debate? A spawn card that has been
-			// overtaken by a later call is a finished phase, and printing it in full is
-			// the parade of identical "вторая модель" panels. It collapses to one line;
-			// the newest card carries the content.
-			const debateId = (/\[spar (d\d+)/.exec(raw) ?? [])[1] ?? "";
-			const [newest, setNewest] = React.useState(null);
-			React.useEffect(() => {
-				if (!started || debateId === "") return undefined;
-				let alive = true;
-				let timer;
-				// Asked once, this answer is stale the moment the next phase starts: an
-				// old card would never learn that a newer call exists and would never
-				// collapse. Poll while the card is a spawn card, and stop as soon as it
-				// knows it was overtaken.
-				const ask = () => {
-					fetch(`/spar-live?debate=${encodeURIComponent(debateId)}`, { cache: "no-store" })
-						.then((response) => (response.ok ? response.json() : null))
-						.then((value) => {
-							if (!alive || value === null || value.newest === null || value.newest === undefined) return;
-							setNewest(value.newest);
-							const overtaken = typeof props.callId === "string" && value.newest.callId !== props.callId;
-							if (!overtaken) timer = setTimeout(ask, 2500);
-						})
-						.catch(() => {
-							if (alive) timer = setTimeout(ask, 5000);
-						});
-				};
-				ask();
-				return () => {
-					alive = false;
-					clearTimeout(timer);
-				};
-			}, [debateId, started, props.callId]);
-			const superseded =
-				started === true &&
-				typeof props.callId === "string" &&
-				newest !== null &&
-				typeof newest.callId === "string" &&
-				newest.callId !== props.callId;
-			// The registry knows more than the tool-call prop: it has the real text and the
-			// real end. A finished turn must not be painted as running, and a turn whose
-			// first poll is still in flight must not be painted as finished.
-			// `known` is the field that decides everything. A missing entry used to leave
-			// `{stalled:false}` in state — an object, not null — so `liveKnown` was true,
-			// `liveDone` false, and every card whose call the registry did not know
-			// painted itself as "пишет · думает…". That is where the ghost cards came
-			// from: not a running turn, an absent one.
-			const liveKnown = live !== null && live !== undefined && live.known === true;
-			const liveDone = liveKnown && live.done === true;
-			const working = liveKnown && !liveDone;
-			const streaming = working;
-			const smooth = useSmoothText(live?.text ?? "", streaming);
+		/** "1 знак / 2 знака / 5 знаков". */
+		function plural(n, one, few, many) {
+			const mod10 = n % 10;
+			const mod100 = n % 100;
+			if (mod10 === 1 && mod100 !== 11) return one;
+			if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+			return many;
+		}
 
-			// A turn is being written: paint it as it grows instead of holding a
-			// spinner for the whole model round.
-			if (working) {
-				const text = live?.text ?? "";
-				const activity = live?.activity ?? "";
-				const steps = Array.isArray(live?.steps) ? live.steps : [];
-				const reasoning = typeof live?.reasoning === "string" ? live.reasoning : "";
-				return jsxs("div", {
-					"data-spar-card": "",
-					"data-state": "running",
-					"data-tool": "spar",
-					style: { "--spar-rail": accent(modelOf(live?.route)) },
-					children: [
-						jsxs("div", {
-							"data-spar-head": "",
-							children: [
-								jsx("span", { "data-spar-badge": "", children: "◈" }),
-								jsx("span", {
-									"data-spar-name": "",
-									children: stageName(live),
-								}),
-								jsx("span", {
-									"data-spar-tag": "",
-									"data-spar-stalled": live?.stalled === true ? "1" : "0",
-									children:
-										live?.stalled === true
-											? "нет ответа"
-											: live?.phase === "verdict"
-												? "приговор"
-												: "пишет",
-								}),
-								live === null || typeof live.ms !== "number"
-									? null
-									: jsx("span", { "data-spar-meta": "", children: `${(live.ms / 1000).toFixed(1)}s` }),
-							],
-						}),
-						jsxs("div", {
-							"data-spar-stream": "",
-							children: [
-								// The caller's own turn, above the reply. Without it the card looks
-								// like a monologue and the reader cannot tell what was answered.
-								live === null || typeof live.mine !== "string" || live.mine === ""
-									? null
-									: jsx("div", { "data-spar-mine": "", children: live.mine }),
-								steps.length === 0
-									? null
-									: jsx("div", {
-											"data-spar-steps": "",
-											children: steps.map((step, index) =>
-												jsxs(
-													"div",
-													{
-														"data-spar-step": "",
-														key: `${index}-${step.name}`,
-														children: [
-															jsx("span", { "data-spar-step-mark": "", children: "›" }),
-															jsx("span", { "data-spar-step-name": "", children: step.name }),
-															step.subject === ""
-																? null
-																: jsx("span", { "data-spar-step-subject": "", children: step.subject }),
-														],
-													},
-												),
-											),
-										}),
-								reasoning === ""
-									? null
-									: jsx("div", { "data-spar-reason": "", children: reasoning }),
-								text === "" ? null : jsx(Body, { text: smooth }),
-								text === "" && reasoning === "" && steps.length === 0 && live?.stalled !== true && live?.mine !== null
-									? jsx("div", { "data-spar-quiet": "", children: "думает…" })
-									: null,
-							],
-						}),
-						activity === "" && text === "" && reasoning === "" && steps.length === 0 && live?.stalled !== true
-							? null
-							: jsxs("div", {
-									"data-spar-status": "",
-									"data-spar-stalled": live?.stalled === true ? "1" : "0",
-									children: [
-										live?.stalled === true ? null : jsx("span", { "data-spar-dot": "" }),
-										live?.stalled === true
-											? "нет ответа от реестра — ход, возможно, оборвался · проверь action:\"result\""
-											: activity === ""
-												? text === ""
-													? "думает…"
-													: "пишет…"
-												: `читает ${activity}`,
-									],
-								}),
-					],
-				});
+		const fmtSeconds = (ms) => (typeof ms === "number" && Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}s` : "");
+		const hiddenTab = () => typeof document !== "undefined" && document.hidden === true;
+
+		/** Monogram for a speaker: A/B for the sides, a scale for the judge. */
+		function monogram(role, phase) {
+			if (phase === "verdict" || role === "judge") return "⚖";
+			if (role === "left") return "A";
+			if (role === "right") return "B";
+			return "◈";
+		}
+
+		/** Split a finished duel body into its two sides. */
+		function splitDuel(body) {
+			const re = /^(A|B) \(([^)\n]*)\) (FOR|AGAINST): /gm;
+			const marks = [];
+			let match = re.exec(body);
+			while (match !== null) {
+				marks.push({ at: match.index, end: re.lastIndex, side: match[1], model: match[2], stance: match[3] });
+				match = re.exec(body);
 			}
+			if (marks.length < 2) return null;
+			return marks.map((mark, index) => ({
+				side: mark.side,
+				model: modelOf(mark.model),
+				stance: mark.stance === "FOR" ? "за" : "против",
+				text: body.slice(mark.end, index + 1 < marks.length ? marks[index + 1].at : body.length).trim(),
+			}));
+		}
 
-			const failed = props.block?.isError === true;
-			const info = parse(props.block);
-
-			// A phase that the debate has moved past: one line, no prose. The turn is
-			// in the record and in whatever card came next; repeating it here is what
-			// made the chat look like four models talking at once.
-			if (superseded && !expanded) {
-				return jsxs("div", {
-					"data-spar-card": "",
-					"data-state": "past",
-					"data-tool": "spar",
-					onClick: () => setExpanded(true),
-					children: [
-						jsxs("div", {
-							"data-spar-head": "",
-							children: [
-								jsx("span", { "data-spar-badge": "", children: "·" }),
-								jsx("span", { "data-spar-name": "", children: `${debateId} · этап пройден` }),
-								jsx("span", { "data-spar-tag": "", children: stageName(newest) }),
-								jsx("span", { "data-spar-meta": "", children: "показать" }),
-							],
-						}),
-					],
-				});
-			}
-
-			// An async turn settled: the result is only an acknowledgement, so the
-			// text comes from the polled state — or, when the registry has forgotten
-			// this call, from the transcript on disk.
-			if (started && durable !== null && !(live !== null && live.done === true)) {
-				return jsxs("div", {
-					"data-spar-card": "",
-					"data-state": "settled",
-					"data-tool": "spar",
-					style: { "--spar-rail": accent(modelOf(durable.route)) },
-					children: [
-						jsxs("div", {
-							"data-spar-head": "",
-							children: [
-								jsx("span", { "data-spar-badge": "", children: "◈" }),
-								jsx("span", { "data-spar-name": "", children: stageName({ phase: durable.role === "judge" ? "verdict" : "reply", role: durable.role, route: durable.route }) }),
-								jsx("span", {
-									"data-spar-tag": "",
-									children: durable.role === "judge" ? "приговор" : "возражение",
-								}),
-								jsx("span", {
-									"data-spar-meta": "",
-									children: `${(durable.ms / 1000).toFixed(1)}s · ${durable.id}`,
-								}),
-							],
-						}),
-						jsxs("div", {
-							"data-spar-body": "",
-							children: [
-								typeof durable.mine === "string" && durable.mine !== ""
-									? jsx("div", { "data-spar-mine": "", children: durable.mine })
-									: null,
-								jsx(Body, { text: durable.text }),
-							],
-						}),
-					],
-				});
-			}
-
-			if (started && live !== null && live.done === true) {
-				const verdict = live.phase === "verdict";
-				return jsxs("div", {
-					"data-spar-card": "",
-					"data-state": live.error ? "error" : "settled",
-					"data-tool": "spar",
-					style: { "--spar-rail": accent(modelOf(live.route)) },
-					children: [
-						jsxs("div", {
-							"data-spar-head": "",
-							children: [
-								jsx("span", { "data-spar-badge": "", children: live.error ? "!" : "◈" }),
-								jsx("span", { "data-spar-name": "", children: stageName(live) }),
-								jsx("span", {
-									"data-spar-tag": "",
-									children: live.error ? "не ответила" : verdict ? "приговор" : "возражение",
-								}),
-								jsx("span", {
-									"data-spar-meta": "",
-									children: `${(live.ms / 1000).toFixed(1)}s${live.id === null ? "" : ` · ${live.id}`}`,
-								}),
-							],
-						}),
-						live.error
-							? jsx("div", { "data-spar-body": "", children: live.error })
-							: jsxs("div", {
-									"data-spar-body": "",
-									children: [
-										// The caller's argument stays visible after the turn ends. It
-										// used to live only in the working state, so a finished card
-										// showed a reply to nothing — and the text no longer echoes
-										// the argument, so this is the only place it can come from.
-										typeof live.mine === "string" && live.mine !== ""
-											? jsx("div", { "data-spar-mine": "", children: live.mine })
-											: null,
-										jsx(Body, { text: live.text }),
-									],
-								}),
-					],
-				});
-			}
-
-			const style = { "--spar-rail": accent(info.model) };
-
-			if (info.utility) {
-				return jsxs("div", {
-					"data-spar-card": "",
-					"data-state": "utility",
-					"data-tool": "spar",
-					children: [
-						jsxs("div", {
-							"data-spar-head": "",
-							children: [
-								jsx("span", { "data-spar-badge": "", children: "◈" }),
-								jsx("span", { "data-spar-tag": "", children: info.tag }),
-							],
-						}),
-						jsx(Body, { text: info.body }),
-					],
-				});
-			}
-
-			const long = info.body.length > 420;
-			const shown = open || !long ? info.body : `${info.body.slice(0, 420).trimEnd()}…`;
-			// A collected turn is a receipt: the prose is already on screen in the
-			// turn's own card, so printing it again is noise, not information.
-			const receipt = info.receipt === true && failed !== true;
-			const collapsedReceipt = receipt && !expanded;
-			const toggleLabel = receipt ? (expanded ? "скрыть" : "показать") : open ? "свернуть" : "показать целиком";
-
+		/** One speaker's header row. */
+		function Head({ v, children }) {
 			return jsxs("div", {
-				"data-spar-card": "",
-				"data-state": failed ? "error" : "settled",
-				"data-tool": "spar",
-				style,
+				"data-spar-head": "",
 				children: [
-					jsxs("div", {
-						"data-spar-head": "",
+					jsx("span", { "data-spar-avatar": "", "aria-hidden": "true", children: monogram(v.role, v.phase) }),
+					jsxs("span", {
+						"data-spar-who": "",
 						children: [
-							jsx("span", { "data-spar-badge": "", children: failed ? "!" : "◈" }),
-							jsx("span", {
-								"data-spar-name": "",
-								children: info.tag === "приговор" ? "судья" : info.tag === "каталог" || info.tag === "список" ? "spar" : "B отвечает",
-							}),
-							jsx("span", { "data-spar-tag": "", children: failed ? "не ответила" : info.tag }),
-							info.ms === null
-								? null
-								: jsx("span", {
-										"data-spar-meta": "",
-										children: `${(info.ms / 1000).toFixed(1)}s${info.debate === "" ? "" : ` · ${info.debate}`}`,
-									}),
+							jsx("span", { "data-spar-name": "", children: v.name }),
+							v.model === "" ? null : jsx("span", { "data-spar-model": "", title: v.route ?? v.model, children: v.model }),
 						],
 					}),
-					collapsedReceipt
-						? jsxs("div", {
-								"data-spar-receipt": "",
-								children: [
-									jsx("span", {
-										children: info.pending
-											? "ответ ещё не готов"
-											: `ответ получен · ${info.body.length} ${
-													info.body.length % 10 === 1 && info.body.length % 100 !== 11
-														? "знак"
-														: [2, 3, 4].includes(info.body.length % 10) && ![12, 13, 14].includes(info.body.length % 100)
-															? "знака"
-															: "знаков"
-												}`,
-									}),
-									info.body === "" || info.pending
-										? null
-										: jsx("button", {
-												type: "button",
-												"data-spar-toggle": "",
-												onClick: () => setExpanded(true),
-												children: "показать",
-											}),
-								],
-							})
-						: info.body === ""
-							? jsx("div", { "data-spar-body": "", children: "пустой ответ" })
-							: jsx(Body, { text: receipt ? info.body : shown }),
-					long && !receipt
-						? jsxs("div", {
+					v.tag === "" ? null : jsx("span", { "data-spar-tag": "", "data-tone": v.tone ?? "", children: v.tag }),
+					jsx("span", { "data-spar-meta": "", children: v.meta ?? "" }),
+					children ?? null,
+				],
+			});
+		}
+
+		/** The caller's own argument, shown above the reply it provoked. */
+		function Mine({ text }) {
+			if (typeof text !== "string" || text.trim() === "") return null;
+			return jsx("div", { "data-spar-mine": "", "data-label": "A · запрос оппоненту", children: text });
+		}
+
+		function Steps({ steps }) {
+			if (!Array.isArray(steps) || steps.length === 0) return null;
+			return jsx("div", {
+				"data-spar-steps": "",
+				children: steps.map((step, index) =>
+					jsxs("span", {
+						"data-spar-chip": "",
+						key: `${index}-${step.name}`,
+						children: [jsx("b", { children: step.name }), step.subject ? jsx("span", { children: step.subject }) : null],
+					}),
+				),
+			});
+		}
+
+		function CopyButton({ text }) {
+			const [done, setDone] = React.useState(false);
+			return jsx("button", {
+				type: "button",
+				"data-spar-icon": "",
+				title: "Скопировать текст",
+				"aria-label": "Скопировать текст",
+				onClick: (event) => {
+					event.stopPropagation();
+					try {
+						navigator.clipboard.writeText(text).then(
+							() => {
+								setDone(true);
+								setTimeout(() => setDone(false), 1400);
+							},
+							() => {},
+						);
+					} catch {
+						/* clipboard unavailable: nothing to do */
+					}
+				},
+				children: done ? "✓" : "⧉",
+			});
+		}
+
+		/** A long reply folds to a few lines; the fold is a real, keyboard-reachable button. */
+		function Foldable({ text, limit }) {
+			const [open, setOpen] = React.useState(false);
+			const long = text.length > limit;
+			return jsxs("div", {
+				children: [
+					jsx("div", { "data-spar-clamp": long && !open ? "" : undefined, children: jsx(Body, { text }) }),
+					long
+						? jsx("div", {
 								"data-spar-foot": "",
-								children: [
-									jsx("span", { children: "спор" }),
-									jsx("button", {
-										type: "button",
-										"data-spar-toggle": "",
-										onClick: () => (receipt ? setExpanded((value) => !value) : setOpen((value) => !value)),
-										children: toggleLabel,
-									}),
-								],
+								children: jsx("button", {
+									type: "button",
+									"data-spar-toggle": "",
+									"aria-expanded": open ? "true" : "false",
+									onClick: () => setOpen((value) => !value),
+									children: open ? "свернуть" : `показать целиком · ${text.length} ${plural(text.length, "знак", "знака", "знаков")}`,
+								}),
 							})
 						: null,
 				],
 			});
 		}
 
+		/** Reply text plus the files it actually read — a claim you can check. */
+		function Reply({ text, used, truncated }) {
+			return jsxs("div", {
+				children: [
+					jsx(Foldable, { text, limit: 1400 }),
+					Array.isArray(used) && used.length > 0
+						? jsxs("div", {
+								"data-spar-foot": "",
+								children: [
+									jsx("span", { children: "читал:" }),
+									...used.slice(0, 12).map((entry, index) =>
+										jsx("span", { "data-spar-chip": "", key: index, children: jsx("span", { children: entry }) }),
+									),
+									used.length > 12 ? jsx("span", { children: `+${used.length - 12}` }) : null,
+								],
+							})
+						: null,
+					truncated === true ? jsx("div", { "data-spar-foot": "", children: "ответ обрезан по лимиту токенов" }) : null,
+				],
+			});
+		}
+
+		/** Live preview of a turn in progress. */
+		function Running({ state, smooth }) {
+			const text = state?.text ?? "";
+			const reasoning = typeof state?.reasoning === "string" ? state.reasoning : "";
+			const steps = Array.isArray(state?.steps) ? state.steps : [];
+			const activity = state?.activity ?? "";
+			const stalled = state?.stalled === true;
+			return jsxs("div", {
+				"data-spar-stream": "",
+				children: [
+					jsx(Mine, { text: state?.mine }),
+					jsx(Steps, { steps }),
+					reasoning === ""
+						? null
+						: jsxs("details", {
+								"data-spar-reason": "",
+								children: [jsx("summary", { children: "ход мысли" }), jsx("div", { children: reasoning })],
+							}),
+					text === "" ? null : jsx(Body, { text: smooth }),
+					jsxs("div", {
+						"data-spar-status": "",
+						"data-stalled": stalled ? "1" : "0",
+						role: "status",
+						"aria-live": "polite",
+						children: [
+							stalled ? null : jsx("span", { "data-spar-dot": "" }),
+							stalled
+								? "нет ответа от реестра — ход, возможно, оборвался · проверь action:\"result\""
+								: activity !== ""
+									? `читает ${activity}`
+									: text === ""
+										? "думает…"
+										: "пишет…",
+						],
+					}),
+				],
+			});
+		}
+
+		/** The `action` the agent asked for, when the call block carries its arguments; "" when unknown. */
+		function actionOf(props) {
+			try {
+				const block = props.block ?? {};
+				let args = (block.call ?? block).arguments ?? block.args ?? block.input;
+				if (typeof args === "string") args = JSON.parse(args);
+				return typeof args?.action === "string" ? args.action : "";
+			} catch {
+				return "";
+			}
+		}
+
+		function Card({ props }) {
+			const [expanded, setExpanded] = React.useState(false);
+			const raw = props.block === undefined ? "" : rawText(props.block);
+			const started = raw.includes("· started]");
+			const running = props.phase === "preparing" || props.phase === "start";
+			const live = useLiveTurn(props.callId, running || started);
+			const liveKnown = live !== null && live !== undefined && live.known === true;
+			// A duel runs two models under one tool call; the second has its own id.
+			const isDuelLive = liveKnown && live.role === "left";
+			const liveB = useLiveTurn(
+				typeof props.callId === "string" && props.callId !== "" ? `${props.callId}:b` : "",
+				isDuelLive,
+			);
+			const liveBKnown = liveB !== null && liveB !== undefined && liveB.known === true;
+			const durable = useDurableTurn(props.callId, started === true && liveKnown !== true);
+			const debateId = (/\[spar (d\d+)/.exec(raw) ?? [])[1] ?? "";
+			const newest = useNewestFor(debateId, props.callId, started);
+			const superseded =
+				started === true &&
+				typeof props.callId === "string" &&
+				newest !== null &&
+				typeof newest.callId === "string" &&
+				newest.callId !== props.callId;
+			const liveDone = liveKnown && live.done === true;
+			const working = liveKnown && (!liveDone || (isDuelLive && liveBKnown && liveB.done !== true));
+			const smooth = useSmoothText(live?.text ?? "", working);
+			const smoothB = useSmoothText(liveB?.text ?? "", working);
+			const tint = (route) => ({ "--spar-rail": accent(modelOf(route)), "--spar-tint": tintOf(modelOf(route)) });
+			const frame = (v, children, extra = {}) =>
+				jsxs("div", {
+					"data-spar-card": "",
+					"data-tool": "spar",
+					"data-state": v.state,
+					"data-kind": v.kind ?? "turn",
+					style: tint(v.route ?? v.model),
+					...extra,
+					children,
+				});
+
+			// ---- a turn is being written ----------------------------------------
+			if (working) {
+				if (isDuelLive) {
+					const side = (state, smoothed, label) =>
+						jsxs("div", {
+							"data-spar-col": "",
+							style: tint(state?.route),
+							children: [
+								jsx(Head, {
+									v: {
+										name: `${label} · ${state?.role === "left" ? "за" : "против"}`,
+										role: state?.role,
+										model: modelOf(state?.route),
+										route: state?.route,
+										tag: state?.done === true ? "готово" : state?.stalled === true ? "нет ответа" : "пишет",
+										tone: state?.done === true ? "" : "live",
+										meta: fmtSeconds(state?.ms),
+									},
+								}),
+								state === null || state === undefined || state.known !== true
+									? jsx("div", { "data-spar-quiet": "", children: "ждёт очереди…" })
+									: jsx(Running, { state: { ...state, mine: null }, smooth: smoothed }),
+							],
+						});
+					return frame({ state: "running", kind: "duel", route: live.route }, [
+						jsx("div", { "data-spar-cols": "", children: [side(live, smooth, "A"), side(liveB, smoothB, "B")] }),
+					]);
+				}
+				const verdict = live.phase === "verdict";
+				return frame({ state: "running", kind: verdict ? "verdict" : "turn", route: live.route }, [
+					jsx(Head, {
+						v: {
+							name: stageName(live),
+							role: live.role,
+							phase: live.phase,
+							model: modelOf(live.route),
+							route: live.route,
+							tag: live.stalled === true ? "нет ответа" : verdict ? "выносит приговор" : "пишет",
+							tone: live.stalled === true ? "error" : verdict ? "verdict" : "live",
+							meta: fmtSeconds(live.ms),
+						},
+					}),
+					jsx(Running, { state: live, smooth }),
+				]);
+			}
+
+			const failed = props.block?.isError === true;
+			const info = parse(props.block);
+
+			// ---- a phase the debate has moved past ------------------------------
+			if (superseded && !expanded) {
+				const activate = () => setExpanded(true);
+				return jsxs("div", {
+					"data-spar-card": "",
+					"data-tool": "spar",
+					"data-state": "past",
+					role: "button",
+					tabIndex: 0,
+					"aria-label": `${debateId}: этап пройден, показать`,
+					onClick: activate,
+					onKeyDown: (event) => {
+						if (event.key === "Enter" || event.key === " ") {
+							event.preventDefault();
+							activate();
+						}
+					},
+					children: jsx(Head, {
+						v: { name: `${debateId} · этап пройден`, role: null, model: "", tag: stageName(newest), meta: "показать ›" },
+					}),
+				});
+			}
+
+			// ---- the durable record (survives reload and restart) ---------------
+			if (started && durable !== null && !(live !== null && live.done === true)) {
+				if (durable.pending === true) {
+					const err = durable.failed;
+					return frame({ state: err ? "error" : "running", route: durable.route }, [
+						jsx(Head, {
+							v: {
+								name: "B",
+								role: "right",
+								model: modelOf(durable.route),
+								route: durable.route,
+								tag: err ? "не ответила" : "ждёт ответа",
+								tone: err ? "error" : "live",
+								meta: durable.id,
+							},
+						}),
+						jsx(Mine, { text: durable.mine }),
+						err
+							? jsx("div", { "data-spar-body": "", children: String(err.message ?? "ход оборвался") })
+							: jsx("div", { "data-spar-quiet": "", children: "ответ ещё пишется…" }),
+					]);
+				}
+				const judge = durable.role === "judge";
+				return frame({ state: "done", kind: judge ? "verdict" : "turn", route: durable.route }, [
+					jsx(Head, {
+						v: {
+							name: judge ? "судья" : stageName({ role: durable.role }),
+							role: durable.role,
+							model: modelOf(durable.route),
+							route: durable.route,
+							tag: judge ? "приговор" : `раунд ${durable.round}`,
+							tone: judge ? "verdict" : "",
+							meta: `${fmtSeconds(durable.ms)} · ${durable.id}`,
+						},
+						children: jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text: durable.text }) }),
+					}),
+					jsx(Mine, { text: durable.mine }),
+					jsx(Reply, { text: durable.text, used: durable.used, truncated: durable.truncated }),
+				]);
+			}
+
+			// ---- a settled registry entry ---------------------------------------
+			if (started && live !== null && live.done === true) {
+				const verdict = live.phase === "verdict";
+				const state = live.error ? "error" : "done";
+				return frame({ state, kind: verdict ? "verdict" : "turn", route: live.route }, [
+					jsx(Head, {
+						v: {
+							name: stageName(live),
+							role: live.role,
+							phase: live.phase,
+							model: modelOf(live.route),
+							route: live.route,
+							tag: live.error ? "не ответила" : verdict ? "приговор" : "возражение",
+							tone: live.error ? "error" : verdict ? "verdict" : "",
+							meta: `${fmtSeconds(live.ms)}${live.id === null ? "" : ` · ${live.id}`}`,
+						},
+						children: live.error ? null : jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text: live.text }) }),
+					}),
+					jsx(Mine, { text: live.mine }),
+					live.error ? jsx("div", { "data-spar-body": "", children: live.error }) : jsx(Reply, { text: live.text }),
+				]);
+			}
+
+			// ---- utility results: list / show / close / models -------------------
+			// Bookkeeping answers ("opened d65 …", list, show, close, the model
+			// catalog) are for the agent, not the reader: the chat shows nothing for
+			// them. Only a failure is worth a line, because nobody else will say it.
+			if (info.utility) {
+				if (!failed) {
+					// A turn that has not reached the live registry yet still deserves a sign of
+					// life; list / show / close / models never do.
+					const quietActions = ["list", "show", "close", "models", "result"];
+					if (running && !quietActions.includes(actionOf(props))) {
+						return frame({ state: "running", kind: "note", route: "" }, [
+							jsxs("div", {
+								"data-spar-status": "",
+								style: { marginTop: 0 },
+								role: "status",
+								children: [jsx("span", { "data-spar-dot": "" }), "готовлю ход…"],
+							}),
+						]);
+					}
+					return null;
+				}
+				return frame({ state: "error", kind: "note", route: "" }, [
+					jsx(Head, { v: { name: "spar", role: null, model: "", tag: "сбой", tone: "error", meta: "" } }),
+					jsx(Foldable, { text: info.body, limit: 1800 }),
+				]);
+			}
+
+			// ---- a duel result ----------------------------------------------------
+			const duel = info.tag === "дуэль" ? splitDuel(info.body) : null;
+			if (duel !== null) {
+				return frame({ state: failed ? "error" : "done", kind: "duel", route: "" }, [
+					jsx(Head, {
+						v: { name: "дуэль", role: null, model: "", tag: info.debate, meta: "" },
+						children: jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text: info.body }) }),
+					}),
+					jsx("div", {
+						"data-spar-cols": "",
+						children: duel.map((side) =>
+							jsxs(
+								"div",
+								{
+									"data-spar-col": "",
+									style: tint(side.model),
+									key: side.side,
+									children: [
+										jsx(Head, {
+											v: { name: `${side.side} · ${side.stance}`, role: side.side === "A" ? "left" : "right", model: side.model, route: side.model, tag: "", meta: "" },
+										}),
+										jsx(Foldable, { text: side.text, limit: 1100 }),
+									],
+								},
+							),
+						),
+					}),
+				]);
+			}
+
+			// ---- a collected turn (`result`) is only a receipt --------------------
+			const receipt = info.receipt === true && failed !== true;
+			const verdictCard = info.tag.startsWith("приговор");
+			const head = {
+				name: failed ? "сбой" : verdictCard ? "судья" : "B",
+				role: verdictCard ? "judge" : "right",
+				model: info.model,
+				route: info.model,
+				tag: failed ? "не ответила" : info.tag,
+				tone: failed ? "error" : verdictCard ? "verdict" : "",
+				meta: `${fmtSeconds(info.ms)}${info.debate === "" ? "" : ` · ${info.debate}`}`,
+			};
+			if (receipt && !expanded) {
+				return frame({ state: "done", kind: verdictCard ? "verdict" : "turn", route: info.model }, [
+					jsx(Head, { v: head }),
+					jsxs("div", {
+						"data-spar-receipt": "",
+						children: [
+							jsx("span", {
+								children: info.pending
+									? "ответ ещё не готов"
+									: `ответ получен · ${info.body.length} ${plural(info.body.length, "знак", "знака", "знаков")}`,
+							}),
+							info.body === "" || info.pending
+								? null
+								: jsx("button", {
+										type: "button",
+										"data-spar-toggle": "",
+										"aria-expanded": "false",
+										onClick: () => setExpanded(true),
+										children: "показать",
+									}),
+						],
+					}),
+				]);
+			}
+			return frame({ state: failed ? "error" : "done", kind: verdictCard ? "verdict" : "turn", route: info.model }, [
+				jsx(Head, {
+					v: head,
+					children:
+						info.body === "" ? null : jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text: info.body }) }),
+				}),
+				info.body === "" ? jsx("div", { "data-spar-body": "", children: "пустой ответ" }) : jsx(Foldable, { text: info.body, limit: 1400 }),
+				receipt
+					? jsx("div", {
+							"data-spar-foot": "",
+							children: jsx("button", {
+								type: "button",
+								"data-spar-toggle": "",
+								"aria-expanded": "true",
+								onClick: () => setExpanded(false),
+								children: "скрыть",
+							}),
+						})
+					: null,
+			]);
+		}
+
+
 		/* ------------------------------------------------------------- panel ----- */
 
 		const PANEL_STYLE_ID = "dsh-spar-panel-style";
 
 		const PANEL_CSS = `
-.spp{font:12px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#ececf1;
+.spp{--p-fg:#f0f0f0;--p-dim:#8f8f8f;--p-faint:#5c5c5c;--p-line:rgba(255,255,255,.09);--p-card:rgba(255,255,255,.035);
+	--p-accent:#f0f0f0;--p-accent2:#34d399;--p-gold:#e5b83a;--p-bad:#f87171;
+	font:12.5px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--p-fg);
 	position:fixed;right:14px;bottom:98px;z-index:60;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
 .spp *{box-sizing:border-box}
 .spp button,.spp select,.spp input{font:inherit;color:inherit}
 .spp button{background:none;border:0;cursor:pointer}
-@keyframes spp-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
-.spp .pill{display:flex;align-items:center;gap:7px;padding:5px 11px 5px 8px;border-radius:999px;
-	border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,rgba(30,30,42,.96),rgba(16,16,22,.96));
-	box-shadow:0 10px 30px rgba(0,0,0,.55);transition:transform .16s ease,box-shadow .16s ease}
-.spp .pill:hover{transform:translateY(-1px);box-shadow:0 14px 36px rgba(0,0,0,.6)}
-.spp .pill b{font-size:11.5px;font-weight:600;letter-spacing:.02em}
-.spp .pill .dots{display:flex;gap:2px;margin-top:3px}
-.spp .pill .dots i{width:3px;height:3px;border-radius:99px;background:#8b8b99}
-.spp .pill .dots i.on{background:#34d399;box-shadow:0 0 6px #34d399}
-.spp .panel{width:352px;max-width:calc(100vw - 26px);margin-bottom:10px;border-radius:18px;padding:1px;
-	background:linear-gradient(160deg,rgba(139,92,246,.4),rgba(34,211,238,.18) 45%,transparent 72%);
-	box-shadow:0 26px 70px rgba(0,0,0,.65);animation:spp-in .22s cubic-bezier(.2,.9,.25,1) both}
-.spp .inner{border-radius:17px;padding:13px 13px 11px;max-height:min(76vh,660px);display:flex;flex-direction:column;
-	background:radial-gradient(120% 90% at 100% 0%,rgba(139,92,246,.10),transparent 55%),
-	linear-gradient(180deg,rgba(19,19,27,.99),rgba(12,12,17,.99))}
-.spp .head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
-.spp .mark{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:11px;font-weight:700;
-	background:linear-gradient(135deg,#8b5cf6,#22d3ee);color:#08080c}
-.spp .head h1{font-size:12.5px;font-weight:600;margin:0;letter-spacing:.02em}
-.spp .chip{font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:#8b8b99;
-	border:1px solid rgba(255,255,255,.08);border-radius:99px;padding:2px 7px}
-.spp .x{margin-left:auto;width:22px;height:22px;border-radius:7px;display:grid;place-items:center;color:#8b8b99;
-	border:1px solid rgba(255,255,255,.08)}
-.spp .x:hover{color:#ececf1;background:rgba(255,255,255,.05)}
-.spp .scroll{flex:1;min-height:0;overflow:auto;margin:0 -3px;padding:0 3px}
-.spp .scroll::-webkit-scrollbar{width:6px}
-.spp .scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:99px}
-.spp .row{margin-bottom:9px}
-.spp .row label{display:block;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#8b8b99;margin-bottom:4px}
-.spp select,.spp input[type=number]{width:100%;padding:6px 8px;border-radius:9px;border:1px solid rgba(255,255,255,.1);
-	background:rgba(255,255,255,.035);outline:none;font-size:11.5px}
-.spp select:focus,.spp input:focus{border-color:rgba(139,92,246,.55);background:rgba(139,92,246,.08)}
-.spp option{background:#14141c}
+.spp :focus-visible{outline:2px solid var(--p-accent);outline-offset:2px}
+@keyframes spp-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes spp-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.99)}}
+@keyframes spp-tab{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.spp .pill{display:flex;align-items:center;gap:8px;padding:6px 13px 6px 7px;border-radius:999px;
+	border:1px solid var(--p-line);background:rgba(10,10,10,.92);backdrop-filter:blur(10px);
+	box-shadow:0 10px 30px rgba(0,0,0,.45);transition:transform .16s ease,border-color .16s ease}
+.spp .pill:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.35)}
+.spp .pill b{font-size:12px;font-weight:600;letter-spacing:.02em}
+.spp .mark{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-size:13px;font-weight:700;
+	background:#f0f0f0;color:#000;flex:none}
+.spp .live{width:6px;height:6px;border-radius:99px;background:var(--p-faint)}
+.spp .live[data-on="1"]{background:var(--p-accent2);box-shadow:0 0 8px var(--p-accent2)}
+
+.spp .panel{width:408px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
+	border:1px solid var(--p-line);background:rgba(8,8,8,.97);backdrop-filter:blur(16px);
+	box-shadow:0 28px 80px rgba(0,0,0,.65);animation:spp-in .24s cubic-bezier(.2,.9,.25,1) both}
+.spp .panel.closing{animation:spp-out .16s ease-in forwards}
+.spp .inner{display:flex;flex-direction:column;max-height:min(80vh,700px)}
+
+.spp .top{padding:14px 14px 0;display:flex;align-items:center;gap:10px}
+.spp .top h1{font-size:14px;font-weight:650;margin:0;letter-spacing:.01em}
+.spp .top small{display:block;font-size:10.5px;color:var(--p-dim);margin-top:1px}
+.spp .x{margin-left:auto;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:var(--p-dim);font-size:16px;line-height:1}
+.spp .x:hover{color:var(--p-fg);background:rgba(255,255,255,.07)}
+
+/* the match: who argues against whom, before and after you touch anything */
+.spp .match{margin:12px 14px 0;display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:8px}
+.spp .side{position:relative;min-width:0;padding:8px 10px 8px 13px;border-radius:12px;background:var(--p-card);border:1px solid var(--p-line)}
+.spp .side::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--rail,#6b7280)}
+.spp .side i{display:block;font-style:normal;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--p-dim)}
+.spp .side b{display:block;font-size:11.5px;font-weight:600;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .side em{display:block;font-style:normal;font-size:10px;color:var(--p-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .vs{align-self:center;font-size:9.5px;color:var(--p-faint);letter-spacing:.08em}
+
+.spp .tabs{display:flex;gap:2px;margin:12px 14px 0;padding:3px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--p-line)}
+.spp .tabs button{flex:1;padding:6px 0;border-radius:9px;font-size:11.5px;color:var(--p-dim);transition:background .15s,color .15s}
+.spp .tabs button:hover{color:var(--p-fg)}
+.spp .tabs button[aria-selected="true"]{background:rgba(255,255,255,.12);color:var(--p-fg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.spp .tabs sup{font-size:9px;margin-left:3px;color:var(--p-faint)}
+
+.spp .body{flex:1;min-height:0;overflow:auto;padding:12px 14px 4px;animation:spp-tab .18s ease both}
+.spp .body::-webkit-scrollbar{width:6px}
+.spp .body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px}
+.spp .group{padding:11px 12px 4px;margin-bottom:10px;border-radius:14px;background:var(--p-card);border:1px solid var(--p-line)}
+.spp .group > h2{margin:0 0 9px;font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--p-dim)}
+.spp .row{margin-bottom:10px}
+.spp .row label,.spp .row .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:#c4c4c4;margin-bottom:4px}
+.spp .row label small,.spp .row .lab small{font-size:10px;color:var(--p-faint)}
+.spp select,.spp input[type=number]{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--p-line);
+	background:rgba(0,0,0,.25);outline:none;font-size:12px;transition:border-color .15s,background .15s}
+.spp select:hover,.spp input:hover{border-color:rgba(255,255,255,.18)}
+.spp select:focus,.spp input:focus{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.05)}
+.spp option{background:#111}.spp option:disabled{color:#666}
 .spp .seg{display:flex;gap:4px}
-.spp .seg button{flex:1;padding:5px 0;border-radius:8px;border:1px solid rgba(255,255,255,.09);
-	font-size:11px;color:#8b8b99;transition:.15s}
-.spp .seg button[data-on="1"]{color:#ececf1;border-color:rgba(167,139,250,.55);background:rgba(139,92,246,.18)}
-.spp .sw{display:flex;align-items:center;gap:8px;justify-content:space-between;
-	padding:6px 9px;border-radius:9px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03)}
-.spp .sw span{font-size:11.5px}
-.spp .sw button{width:36px;height:20px;box-sizing:border-box;border-radius:99px;border:1px solid rgba(255,255,255,.14);
-	background:rgba(255,255,255,.08);position:relative;padding:0;cursor:pointer;transition:background .18s,border-color .18s}
-.spp .sw button i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:99px;background:#6b6b78;transition:left .18s,background .18s}
-.spp .sw button[data-on="1"]{background:linear-gradient(135deg,rgba(139,92,246,.55),rgba(34,211,238,.45));
-	border-color:rgba(167,139,250,.55)}
-.spp .sw button[data-on="1"] i{left:18px;background:#ececf1}
-.spp .two{display:flex;gap:8px}
-.spp .two > div{flex:1}
-.spp .foot{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;
-	border-top:1px solid rgba(255,255,255,.07)}
-.spp .save{padding:5px 13px;border-radius:9px;font-size:11.5px;font-weight:600;
-	background:linear-gradient(135deg,#8b5cf6,#22d3ee);color:#08080c}
-.spp .save[disabled]{opacity:.5}
-.spp .note{font-size:10.5px;color:#8b8b99;margin-left:auto}
-.spp .note[data-bad="1"]{color:#f87171}
-.spp .list{margin-top:11px}
-.spp .list h2{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#8b8b99;margin:0 0 6px}
-.spp .deb{display:flex;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11px}
-.spp .deb b{font-variant-numeric:tabular-nums;color:#c4b5fd;flex:none}
-.spp .deb em{font-style:normal;color:#8b8b99;flex:none}
-.spp .deb span{color:#a8a8b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spp .empty{font-size:11px;color:#8b8b99}
+.spp .seg button{flex:1;padding:6px 4px;border-radius:9px;border:1px solid var(--p-line);background:rgba(0,0,0,.2);
+	font-size:11px;color:var(--p-dim);transition:.15s;white-space:nowrap}
+.spp .seg button:hover{color:var(--p-fg);border-color:rgba(255,255,255,.2)}
+.spp .seg button[data-on="1"]{color:var(--p-fg);border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.12)}
+.spp .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.spp .deb{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:9px 11px;margin-bottom:7px;border-radius:12px;
+	background:var(--p-card);border:1px solid var(--p-line)}
+.spp .deb b{font-variant-numeric:tabular-nums;color:var(--p-accent);font-size:11.5px}
+.spp .deb em{font-style:normal;font-size:10px;color:var(--p-dim);text-align:right}
+.spp .deb[data-v="1"] em{color:var(--p-gold)}
+.spp .deb span{grid-column:1/-1;font-size:11.5px;color:#c4c4c4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.spp .empty{padding:22px 0;text-align:center;font-size:11.5px;color:var(--p-dim)}
+
+.spp .foot{display:flex;align-items:center;gap:8px;padding:11px 14px 13px;border-top:1px solid var(--p-line);background:rgba(0,0,0,.18)}
+.spp .save{position:relative;padding:7px 16px;border-radius:11px;font-size:12px;font-weight:650;color:#000;
+	background:#f0f0f0;transition:opacity .15s,transform .15s}
+.spp .save:hover:not([disabled]){transform:translateY(-1px)}
+.spp .save[disabled]{opacity:.38;cursor:default}
+.spp .ghost{padding:7px 10px;border-radius:10px;font-size:11.5px;color:var(--p-dim);border:1px solid var(--p-line)}
+.spp .ghost:hover{color:var(--p-fg);background:rgba(255,255,255,.06)}
+.spp .note{font-size:10.5px;color:var(--p-dim);margin-left:auto;text-align:right;min-width:0}
+.spp .note[data-bad="1"]{color:var(--p-bad)}
+.spp .note[data-dirty="1"]{color:var(--p-gold)}
+.spp .warn{margin:10px 14px 0;padding:7px 10px;border-radius:10px;font-size:11px;line-height:1.4;color:var(--p-bad);background:rgba(248,113,113,.09);box-shadow:inset 0 0 0 1px rgba(248,113,113,.3)}
+@media (prefers-reduced-motion:reduce){.spp .panel,.spp .body{animation:none}.spp .pill,.spp .save{transition:none}}
 `;
 
 		/**
@@ -1017,7 +1153,7 @@ window.__ModuleLoader__.load({
 		}
 
 		/** One choice the panel can leave alone: empty value means "profile default". */
-		function modelOptions(models, allowEmpty, emptyLabel, current) {
+		function modelOptions(models, allowEmpty, emptyLabel, current, blocked = {}) {
 			const rows = [];
 			if (allowEmpty) rows.push(jsx("option", { value: "", children: emptyLabel, key: "auto" }));
 			// A value the catalog does not know still exists in settings.json. Without
@@ -1028,10 +1164,14 @@ window.__ModuleLoader__.load({
 				rows.push(jsx("option", { value: current, children: `${current} · нет в каталоге`, key: "stale" }));
 			}
 			for (const entry of models) {
+				// A model taken by another role stays visible but cannot be picked, so the
+				// panel never lets the judge double as a debater.
+				const why = entry.label !== current ? blocked[entry.label] : undefined;
 				rows.push(
 					jsx("option", {
 						value: entry.label,
-						children: entry.chat ? entry.label : `${entry.label} · не чат`,
+						disabled: why !== undefined,
+						children: why !== undefined ? `${entry.label} · ${why}` : entry.chat ? entry.label : `${entry.label} · не чат`,
 						key: entry.label,
 					}),
 				);
@@ -1046,23 +1186,52 @@ window.__ModuleLoader__.load({
 		 */
 		function Panel() {
 			const [open, setOpen] = React.useState(false);
+			const [closing, setClosing] = React.useState(false);
+			// The panel steps back before it unmounts: vanishing on click reads as a glitch.
+			const requestClose = () => {
+				if (closing) return;
+				setClosing(true);
+				setTimeout(() => {
+					setClosing(false);
+					setOpen(false);
+				}, 150);
+			};
 			const [catalog, setCatalog] = React.useState({ providers: [], models: [] });
 			const [state, setState] = React.useState(null);
 			const [draft, setDraft] = React.useState({});
 			const [note, setNote] = React.useState("");
 			const [bad, setBad] = React.useState(false);
 			const [busy, setBusy] = React.useState(false);
+			const [tab, setTab] = React.useState("models");
+			// setState after the panel closed (or unmounted) is a leak and a warning.
+			const alive = React.useRef(true);
+			React.useEffect(() => {
+				alive.current = true;
+				return () => {
+					alive.current = false;
+				};
+			}, []);
 
 			const load = () => {
 				fetch("/spar-models", { cache: "no-store" })
 					.then((response) => (response.ok ? response.json() : null))
 					.then((value) => {
+						if (!alive.current) return;
 						if (value !== null) setCatalog({ providers: value.providers ?? [], models: value.models ?? [] });
+						else {
+							setBad(true);
+							setNote("каталог моделей не отвечает");
+						}
 					})
-					.catch(() => {});
+					.catch(() => {
+						if (!alive.current) return;
+						setBad(true);
+						setNote("каталог моделей не отвечает");
+					});
 				fetch("/spar-settings", { cache: "no-store" })
 					.then((response) => (response.ok ? response.json() : null))
 					.then((value) => {
+						if (!alive.current) return;
 						if (value === null) {
 							setBad(true);
 							setNote("маршрут настроек не отвечает");
@@ -1077,6 +1246,7 @@ window.__ModuleLoader__.load({
 						setDraft({ ...(value.saved ?? {}) });
 					})
 					.catch(() => {
+						if (!alive.current) return;
 						setBad(true);
 						setNote("маршрут настроек не отвечает");
 					});
@@ -1086,7 +1256,14 @@ window.__ModuleLoader__.load({
 				if (open) load();
 			}, [open]);
 
-			const set = (key, value) => setDraft((previous) => ({ ...previous, [key]: value }));
+			const set = (key, value) => {
+				setNote("");
+				setBad(false);
+				setDraft((previous) => ({ ...previous, [key]: value }));
+			};
+			// Compared by sorted keys so that an untouched panel never looks edited.
+			const canon = (value) => JSON.stringify(Object.entries(value ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => [k, String(v)]).sort(([a], [b]) => (a < b ? -1 : 1)));
+			const dirty = state !== null && canon(draft) !== canon(state.saved);
 
 			const save = () => {
 				setBusy(true);
@@ -1098,6 +1275,7 @@ window.__ModuleLoader__.load({
 					challenger: draft.challenger ?? "",
 					language: draft.language ?? "",
 					tools: typeof draft.tools === "boolean" ? draft.tools : null,
+					selfJudge: typeof draft.selfJudge === "boolean" ? draft.selfJudge : null,
 					maxToolRounds: Number(draft.maxToolRounds) || 0,
 					maxReplyTokens: Number(draft.maxReplyTokens) || 0,
 					judgeTokens: Number(draft.judgeTokens) || 0,
@@ -1115,15 +1293,27 @@ window.__ModuleLoader__.load({
 				})
 					.then((response) => (response.ok ? response.json() : null))
 					.then((value) => {
+						if (!alive.current) return;
 						if (value === null) throw new Error("rejected");
 						setState((previous) => ({ ...(previous ?? {}), saved: value.saved, effective: value.effective }));
+						setDraft({ ...(value.saved ?? {}) });
+						// A server that predates a setting silently drops its key; say so instead of
+						// letting the choice vanish on the next open.
+						if (typeof body.selfJudge === "boolean" && typeof value.saved?.selfJudge !== "boolean") {
+							setBad(true);
+							setNote("сервер не знает этой настройки · перезапусти DSH");
+							return;
+						}
 						setNote("сохранено · применится к следующему ходу");
 					})
 					.catch(() => {
+						if (!alive.current) return;
 						setBad(true);
 						setNote("не сохранилось");
 					})
-					.finally(() => setBusy(false));
+					.finally(() => {
+						if (alive.current) setBusy(false);
+					});
 			};
 
 			const models = Array.isArray(catalog.models) ? catalog.models : [];
@@ -1134,293 +1324,355 @@ window.__ModuleLoader__.load({
 			const profile = state?.effective?.profile ?? {};
 			const effective = state?.effective?.current ?? {};
 			const debates = Array.isArray(state?.debates) ? state.debates : [];
+			// Who holds which seat right now; the judge may not also be a debater.
+			const pickedOpponent = draft.opponent || profile.opponent || "";
+			const pickedChallenger = draft.challenger || profile.challenger || "";
+			const pickedJudge = draft.judge === "self" ? "self" : draft.judge || profile.judge || "";
+			const judgeLabel = pickedJudge !== "" && pickedJudge !== "self" ? pickedJudge : "";
+			// The operator can allow the overlap on purpose; then nothing is blocked or flagged.
+			const selfJudgeOn = typeof draft.selfJudge === "boolean" ? draft.selfJudge : profile.selfJudge === true;
+			const clash = !selfJudgeOn && judgeLabel !== "" && (judgeLabel === pickedOpponent || judgeLabel === pickedChallenger);
+			const debaterBlock = selfJudgeOn || judgeLabel === "" ? {} : { [judgeLabel]: "судья" };
+			const judgeBlock = {};
+			if (!selfJudgeOn && pickedOpponent !== "") judgeBlock[pickedOpponent] = "оппонент";
+			if (!selfJudgeOn && pickedChallenger !== "") judgeBlock[pickedChallenger] = "вторая сторона";
 
-			if (!open) {
-				return jsx("div", {
-					className: "spp",
-					children: jsxs("button", {
-						type: "button",
-						className: "pill",
-						onClick: () => setOpen(true),
-						title: "спарринг: модели и настройки",
-						children: [
-							jsx("span", { className: "mark", children: "◈" }),
-							jsxs("div", {
+			const pill = jsxs("button", {
+				type: "button",
+				className: "pill",
+				key: "pill",
+				"aria-label": open ? "Закрыть настройки спарринга" : "Открыть настройки спарринга",
+				"aria-expanded": open ? "true" : "false",
+				onClick: () => (open ? requestClose() : setOpen(true)),
+				title: open ? "свернуть" : "спарринг: модели и настройки",
+				children: [
+					jsx("span", { className: "mark", children: "◈" }),
+					jsx("b", { children: "spar" }),
+					jsx("span", { className: "live", "data-on": debates.some((row) => row.closed !== true) ? "1" : "0", "aria-hidden": "true" }),
+				],
+			});
+
+			if (!open) return jsx("div", { className: "spp", children: pill });
+
+const field = (id, label, hint, control) =>
+				jsxs("div", {
+					className: "row",
+					children: [jsxs("label", { htmlFor: id, children: [label, hint ? jsx("small", { children: hint }) : null] }), control],
+				});
+
+			// One choice among a few, with "профиль" always first: the way back to the default.
+			const chips = (id, label, hint, key, values, profileValue) =>
+				jsxs("div", {
+					className: "row",
+					children: [
+						jsxs("div", { className: "lab", id, children: [label, hint ? jsx("small", { children: hint }) : null] }),
+						jsx("div", {
+							className: "seg",
+							role: "group",
+							"aria-labelledby": id,
+							children: values.map((value) => {
+								const on = String(draft[key] ?? "") === String(value);
+								return jsx("button", {
+									type: "button",
+									key: String(value),
+									"data-on": on ? "1" : "0",
+									"aria-pressed": on ? "true" : "false",
+									onClick: () => set(key, value),
+									children: value === "" ? `профиль · ${profileValue ?? "—"}` : String(value),
+								});
+							}),
+						}),
+					],
+				});
+
+			const modelsTab = [
+				jsxs("div", {
+					className: "group",
+					key: "who",
+					children: [
+						jsx("h2", { children: "Кто спорит" }),
+						field(
+							"spp-f1",
+							"оппонент",
+							"отвечает на ваши аргументы",
+							jsx("select", {
+								id: "spp-f1",
+								value: draft.opponent ?? "",
+								onChange: (event) => set("opponent", event.target.value),
+								children: modelOptions(models, true, inheritLabel("оппонент", profile.opponent, catalog), draft.opponent ?? "", debaterBlock),
+							}),
+						),
+						field(
+							"spp-f3",
+							"вторая сторона дуэли",
+							"для режима duel",
+							jsx("select", {
+								id: "spp-f3",
+								value: draft.challenger ?? "",
+								onChange: (event) => set("challenger", event.target.value),
+								children: modelOptions(models, true, inheritLabel("соперник", profile.challenger, catalog), draft.challenger ?? "", debaterBlock),
+							}),
+						),
+						field(
+							"spp-f2",
+							"судья",
+							"выносит приговор",
+							jsx("select", {
+								id: "spp-f2",
+								value: draft.judge ?? "",
+								onChange: (event) => set("judge", event.target.value),
 								children: [
-									jsx("b", { children: "spar" }),
-									jsxs("div", {
-										className: "dots",
-										children: [
-											jsx("i", { className: debates.some((row) => row.closed !== true) ? "on" : "" }),
-											jsx("i", { className: debates.length > 2 ? "on" : "" }),
-										],
-									}),
+									jsx("option", { value: "", children: inheritLabel("судья", profile.judge, catalog), key: "auto" }),
+									jsx("option", { value: "self", children: "я сам (моя модель)", key: "self" }),
+									...modelOptions(models, false, "", draft.judge ?? "", judgeBlock),
 								],
 							}),
-						],
-					}),
+						),
+						field(
+							"spp-f9",
+							"судья может участвовать",
+							"одна модель и в споре, и на суде",
+							jsx("select", {
+								id: "spp-f9",
+								value: typeof draft.selfJudge === "boolean" ? String(draft.selfJudge) : "",
+								onChange: (event) => {
+									const value = event.target.value;
+									set("selfJudge", value === "" ? "" : value === "true");
+								},
+								children: [
+									jsx("option", { value: "", children: `как в профиле · ${profile.selfJudge === true ? "можно" : "нельзя"}`, key: "auto" }),
+									jsx("option", { value: "true", children: "можно", key: "on" }),
+									jsx("option", { value: "false", children: "нельзя", key: "off" }),
+								],
+							}),
+						),
+					],
+				}),
+				jsxs("div", {
+					className: "group",
+					key: "lang",
+					children: [
+						jsx("h2", { children: "Язык" }),
+						jsxs("div", {
+							className: "row",
+							children: [
+								jsx("div", { className: "lab", id: "spp-lang", children: "язык спора" }),
+								jsxs("div", {
+									className: "seg",
+									role: "group",
+									"aria-labelledby": "spp-lang",
+									children: [
+										// Three states: a ru/en pair had no way back to "whatever the profile says".
+										["ru", "русский", undefined],
+										["en", "english", undefined],
+										["", "как в профиле", `сейчас в профиле: ${profile.language ?? "—"}`],
+									].map(([value, text, title]) => {
+										const on = (draft.language ?? "") === value;
+										return jsx("button", {
+											type: "button",
+											key: text,
+											title,
+											"data-on": on ? "1" : "0",
+											"aria-pressed": on ? "true" : "false",
+											onClick: () => set("language", value),
+											children: text,
+										});
+									}),
+								}),
+							],
+						}),
+					],
+				}),
+			];
+
+			const paramsTab = [
+				jsxs("div", {
+					className: "group",
+					key: "read",
+					children: [
+						jsx("h2", { children: "Чтение проекта" }),
+						// Three states, one of them "не решать": a plain switch could never give the value back to the profile.
+						field(
+							"spp-f4",
+							"оппонент читает файлы",
+							"",
+							jsx("select", {
+								id: "spp-f4",
+								value: typeof draft.tools === "boolean" ? String(draft.tools) : "",
+								onChange: (event) => {
+									const value = event.target.value;
+									set("tools", value === "" ? "" : value === "true");
+								},
+								children: [
+									jsx("option", { value: "", children: `как в профиле · ${profile.tools === false ? "выключено" : "включено"}`, key: "auto" }),
+									jsx("option", { value: "true", children: "включено", key: "on" }),
+									jsx("option", { value: "false", children: "выключено", key: "off" }),
+								],
+							}),
+						),
+						field(
+							"spp-f5",
+							"чтений на ход",
+							"0–8",
+							jsx("input", {
+								id: "spp-f5",
+								type: "number",
+								min: 0,
+								max: 8,
+								value: draft.maxToolRounds ?? effective.maxToolRounds ?? "",
+								onChange: (event) => set("maxToolRounds", event.target.value),
+							}),
+						),
+					],
+				}),
+				jsxs("div", {
+					className: "group",
+					key: "len",
+					children: [
+						jsx("h2", { children: "Длина, токены" }),
+						jsxs("div", {
+							className: "two",
+							children: [
+								field(
+									"spp-f6",
+									"ответ",
+									"",
+									jsx("input", {
+										id: "spp-f6",
+										type: "number",
+										min: 0,
+										step: 1024,
+										value: draft.maxReplyTokens ?? effective.maxReplyTokens ?? "",
+										onChange: (event) => set("maxReplyTokens", event.target.value),
+									}),
+								),
+								field(
+									"spp-f7",
+									"приговор",
+									"",
+									jsx("input", {
+										id: "spp-f7",
+										type: "number",
+										min: 0,
+										step: 1024,
+										value: draft.judgeTokens ?? effective.judgeTokens ?? "",
+										onChange: (event) => set("judgeTokens", event.target.value),
+									}),
+								),
+							],
+						}),
+					],
+				}),
+				jsxs("div", {
+					className: "group",
+					key: "temp",
+					children: [
+						jsx("h2", { children: "Температура" }),
+						chips("spp-f8", "оппонент", "ниже — строже, выше — смелее", "temperatureOpponent", ["", 0.2, 0.5, 0.8, 1, 1.2], profile.temperatureOpponent),
+						chips("spp-f9", "судья", "лучше пониже", "temperatureJudge", ["", 0, 0.15, 0.25, 0.5], profile.temperatureJudge),
+					],
+				}),
+			];
+
+			const debatesTab =
+				debates.length === 0
+					? jsx("div", { className: "empty", children: "Споров пока нет. Они появятся после первого вызова spar." })
+					: debates.map((row) =>
+							jsxs("div", {
+								className: "deb",
+								key: row.id,
+								"data-v": row.verdict ? "1" : "0",
+								children: [
+									jsx("b", { children: row.id }),
+									jsx("em", { children: row.verdict ? "⚖ приговор" : `${row.turns} ход.` }),
+									jsx("span", { children: row.topic }),
+								],
+							}),
+						);
+
+			const tabs = [
+				["models", "Модели"],
+				["params", "Параметры"],
+				["debates", "Споры"],
+			];
+			const sideView = (role, value) => {
+				const text = value === "self" ? "я сам" : String(value || "не выбран");
+				const slash = text.lastIndexOf("/");
+				return jsxs("div", {
+					className: "side",
+					style: { "--rail": tintOf(value) },
+					children: [
+						jsx("i", { children: role }),
+						jsx("b", { title: text, children: slash >= 0 ? text.slice(slash + 1) : text }),
+						jsx("em", { children: slash >= 0 ? text.slice(0, slash) : value === "self" ? "модель, что вызвала spar" : "" }),
+					],
 				});
-			}
+			};
+			const dirtyNow = dirty;
+			const shownNote = note !== "" ? note : dirtyNow ? "есть несохранённые изменения" : "";
 
 			return jsx("div", {
 				className: "spp",
-				children: jsx("div", {
-					className: "panel",
+				children: [jsx("div", {
+					key: "panel",
+					className: "panel" + (closing ? " closing" : ""),
+					role: "dialog",
+					"aria-label": "Настройки спарринга",
 					children: jsxs("div", {
 						className: "inner",
 						children: [
 							jsxs("div", {
-								className: "head",
+								className: "top",
 								children: [
 									jsx("span", { className: "mark", children: "◈" }),
-									jsx("h1", { children: "спарринг" }),
-									jsx("span", { className: "chip", children: "spar" }),
-									jsx("button", { className: "x", onClick: () => setOpen(false), children: "×" }),
+									jsxs("div", {
+										children: [jsx("h1", { children: "Спарринг" }), jsx("small", { children: "модели, судья и лимиты · применяются к следующему ходу" })],
+									}),
+									jsx("button", { type: "button", className: "x", "aria-label": "Закрыть панель", title: "Закрыть", onClick: requestClose, children: "×" }),
 								],
 							}),
 							jsxs("div", {
-								className: "scroll",
-								children: [
-									jsx("div", {
-										className: "row",
-										children: [
-											jsx("label", { children: "оппонент" }),
-											jsx("select", {
-												value: draft.opponent ?? "",
-												onChange: (event) => set("opponent", event.target.value),
-												children: modelOptions(
-													models,
-													true,
-													inheritLabel("оппонент", profile.opponent, catalog),
-													draft.opponent ?? "",
-												),
-											}),
-										],
+								className: "match",
+								children: [sideView("оппонент", pickedOpponent), jsx("span", { className: "vs", "aria-hidden": "true", children: "·" }), sideView("судья", pickedJudge)],
+							}),
+							clash
+								? jsx("div", {
+										className: "warn",
+										role: "alert",
+										children: "Судья и участник спора — одна модель. Такой спор не стартует: выберите другого судью или оппонента.",
+									})
+								: null,
+							jsx("div", {
+								className: "tabs",
+								role: "tablist",
+								children: tabs.map(([id, text]) =>
+									jsxs("button", {
+										type: "button",
+										role: "tab",
+										key: id,
+										"aria-selected": tab === id ? "true" : "false",
+										onClick: () => setTab(id),
+										children: [text, id === "debates" && debates.length > 0 ? jsx("sup", { children: debates.length }) : null],
 									}),
-									jsx("div", {
-										className: "row",
-										children: [
-											jsx("label", { children: "судья" }),
-											jsx("select", {
-												value: draft.judge ?? "",
-												onChange: (event) => set("judge", event.target.value),
-												children: [
-													jsx("option", {
-														value: "",
-														children: inheritLabel("судья", profile.judge, catalog),
-														key: "auto",
-													}),
-													jsx("option", { value: "self", children: "я сам (моя модель)", key: "self" }),
-													...modelOptions(models, false, "", draft.judge ?? ""),
-												],
-											}),
-										],
-									}),
-									jsx("div", {
-										className: "row",
-										children: [
-											jsx("label", { children: "вторая сторона дуэли" }),
-											jsx("select", {
-												value: draft.challenger ?? "",
-												onChange: (event) => set("challenger", event.target.value),
-												children: modelOptions(
-													models,
-													true,
-													inheritLabel("соперник", profile.challenger, catalog),
-													draft.challenger ?? "",
-												),
-											}),
-										],
-									}),
-									jsxs("div", {
-										className: "row",
-										children: [
-											jsx("label", { children: "язык спора" }),
-											jsxs("div", {
-												className: "seg",
-												children: [
-													// Three states, not two: a segment of ru/en had no way back to
-													// "whatever the profile says", so the first click pinned the
-													// language for good.
-													jsx("button", {
-														"data-on": (draft.language ?? profile.language) === "ru" ? "1" : "0",
-														onClick: () => set("language", "ru"),
-														children: "русский",
-													}),
-													jsx("button", {
-														"data-on": (draft.language ?? profile.language) === "en" ? "1" : "0",
-														onClick: () => set("language", "en"),
-														children: "english",
-													}),
-													jsx("button", {
-														"data-on": draft.language === "" || draft.language === undefined ? "1" : "0",
-														onClick: () => set("language", ""),
-														children: "как в профиле",
-													}),
-												],
-											}),
-										],
-									}),
-									jsx("div", {
-										className: "row",
-										children: [
-											jsx("label", { children: "читает проект" }),
-											// A switch can only say on or off, so it could never give a
-											// value back to the profile: once touched, the choice was
-											// pinned forever. Three states, one of them "не решать".
-											jsx("select", {
-												value: typeof draft.tools === "boolean" ? String(draft.tools) : "",
-												onChange: (event) => {
-													const value = event.target.value;
-													set("tools", value === "" ? "" : value === "true");
-												},
-												children: [
-													jsx("option", {
-														value: "",
-														children: `как в профиле · ${profile.tools === false ? "выключено" : "включено"}`,
-														key: "auto",
-													}),
-													jsx("option", { value: "true", children: "включено", key: "on" }),
-													jsx("option", { value: "false", children: "выключено", key: "off" }),
-												],
-											}),
-										],
-									}),
-									jsxs("div", {
-										className: "two",
-										children: [
-											jsx("div", {
-												className: "row",
-												children: [
-													jsx("label", { children: "чтений на ход" }),
-													jsx("input", {
-														type: "number",
-														min: 0,
-														max: 8,
-														value: draft.maxToolRounds ?? effective.maxToolRounds ?? "",
-														onChange: (event) => set("maxToolRounds", event.target.value),
-													}),
-												],
-											}),
-											jsx("div", {
-												className: "row",
-												children: [
-													jsx("label", { children: "лимит ответа" }),
-													jsx("input", {
-														type: "number",
-														min: 0,
-														step: 1024,
-														value: draft.maxReplyTokens ?? effective.maxReplyTokens ?? "",
-														onChange: (event) => set("maxReplyTokens", event.target.value),
-													}),
-												],
-											}),
-										],
-									}),
-									jsx("div", {
-										className: "row",
-										children: [
-											jsx("label", { children: "лимит приговора" }),
-											jsx("input", {
-												type: "number",
-												min: 0,
-												step: 1024,
-												value: draft.judgeTokens ?? effective.judgeTokens ?? "",
-												onChange: (event) => set("judgeTokens", event.target.value),
-											}),
-										],
-									}),
-									jsxs("div", {
-										className: "two",
-										children: [
-											jsx("div", {
-												className: "row",
-												children: [
-													jsx("label", { children: "темп оппонента" }),
-													jsx("select", {
-														value: draft.temperatureOpponent ?? "",
-														onChange: (event) => set("temperatureOpponent", event.target.value),
-														children: ["", 0.2, 0.5, 0.8, 1, 1.2].map((value) =>
-															jsx(
-																"option",
-																{
-																	key: String(value),
-																	value: String(value),
-																	children: value === "" ? `по профилю · ${profile.temperatureOpponent ?? "—"}` : String(value),
-																},
-																`opt-${value}`,
-															),
-														),
-													}),
-												],
-											}),
-											jsx("div", {
-												className: "row",
-												children: [
-													jsx("label", { children: "темп судьи" }),
-													jsx("select", {
-														value: draft.temperatureJudge ?? "",
-														onChange: (event) => set("temperatureJudge", event.target.value),
-														children: ["", 0, 0.15, 0.25, 0.5].map((value) =>
-															jsx(
-																"option",
-																{
-																	key: String(value),
-																	value: String(value),
-																	children: value === "" ? `по профилю · ${profile.temperatureJudge ?? "—"}` : String(value),
-																},
-																`jopt-${value}`,
-															),
-														),
-													}),
-												],
-											}),
-										],
-									}),
-									jsxs("div", {
-										className: "list",
-										children: [
-											jsx("h2", { children: `споры · ${debates.length}` }),
-											debates.length === 0
-												? jsx("div", { className: "empty", children: "пока пусто" })
-												: debates.map((row) =>
-														jsxs(
-															"div",
-															{
-																className: "deb",
-																key: row.id,
-																children: [
-																	jsx("b", { children: row.id }),
-																	jsx("em", { children: row.verdict ? "приговор" : `${row.turns} ход.` }),
-																	jsx("span", { children: row.topic }),
-																],
-															},
-														),
-													),
-										],
-									}),
-								],
+								),
+							}),
+							jsx("div", {
+								className: "body",
+								role: "tabpanel",
+								key: tab,
+								children: tab === "models" ? modelsTab : tab === "params" ? paramsTab : debatesTab,
 							}),
 							jsxs("div", {
 								className: "foot",
 								children: [
-									jsx("button", {
-										className: "save",
-										disabled: busy,
-										onClick: save,
-										children: busy ? "…" : "сохранить",
-									}),
-									jsx("button", {
-										onClick: load,
-										className: "empty",
-										children: "обновить",
-									}),
-									jsx("span", { className: "note", "data-bad": bad ? "1" : "0", children: note }),
+									jsx("button", { type: "button", className: "save", disabled: busy || !dirtyNow, onClick: save, children: busy ? "…" : "Сохранить" }),
+									jsx("button", { type: "button", className: "ghost", onClick: load, title: "Перечитать настройки и каталог моделей", children: "Обновить" }),
+									jsx("span", { className: "note", role: "status", "aria-live": "polite", "data-bad": bad ? "1" : "0", "data-dirty": !bad && note === "" && dirtyNow ? "1" : "0", children: shownNote }),
 								],
 							}),
 						],
 					}),
-				}),
+				}), pill],
 			});
 		}
 

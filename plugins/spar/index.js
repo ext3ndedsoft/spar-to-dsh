@@ -18,6 +18,7 @@
 //   defaultOpponent     alias used when a call omits one
 //   challenger          second side of a duel when `sides` is omitted
 //   judge               alias or route for verdicts
+//   selfJudge           judge may also be a debater     default false
 //   maxReplyTokens      output cap per debate reply      default 1600
 //   temperature         sampling for debate replies      default 0.8
 //   timeoutMs           per-reply deadline               default 180000
@@ -31,13 +32,13 @@
 //   maxToolRounds       tool calls per turn             default 3
 //   judgeTokens         output cap for a verdict        default 16384
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
 import { ALLOWED_TOOL_NAMES, TOOL_SCHEMAS, assertPublicUrl, parseSearchHtml, runTool, webRun } from "./tools.js";
 import { createLiveRegistry, liveHandler } from "./live.js";
-import { createSettingsStore, modelCatalog, modelsHandler, settingsHandler } from "./settings.js";
+import { sameOriginRefusal, createSettingsStore, modelCatalog, modelsHandler, settingsHandler } from "./settings.js";
 
 export const name = "spar";
 
@@ -83,6 +84,8 @@ const DEFAULTS = {
   // A debater may read the project it is arguing about instead of trusting the
   // caller's summary of it. Off makes every turn a closed-book answer.
   tools: true,
+  /** The judge is normally excluded from the debate; the operator can allow the overlap. */
+  selfJudge: false,
   cwd: "",
   maxToolRounds: 10,
   // A ruling on a thinking route spends most of its budget reasoning before it
@@ -204,6 +207,37 @@ function sameRoute(left, right) {
   return left !== null && right !== null && left.provider === right.provider && left.model === right.model;
 }
 
+/**
+ * The model chosen as judge cannot also argue: it would rule on its own debate.
+ * The panel names the judge once; an agent that reaches for it as a stand-in
+ * opponent (because the configured one timed out) is refused here instead of
+ * producing a debate whose verdict then has to be rejected.
+ */
+function refuseJudgeAsDebater(route, config) {
+  // The operator may allow it on purpose (panel: "судья может участвовать"). The
+  // verdict still blinds and shuffles the sides, so the arbiter does not see whose
+  // argument is whose; what stays refused is an agent deciding this by itself.
+  if (config.selfJudge === true) return;
+  const spec = typeof config.judge === "string" ? config.judge.trim() : "";
+  if (spec === "" || spec === "self") return;
+  let judge;
+  try {
+    judge = resolveRoute(spec, config);
+  } catch {
+    return;
+  }
+  if (sameRoute(route, judge)) {
+    throw new Error(
+      `spar: ${route.label} выбран судьёй в настройках и не может участвовать в споре. ` +
+        "Не подменяй модель сам: используй оппонента из настроек, а если он недоступен — скажи об этом пользователю и спроси, что делать.",
+    );
+  }
+}
+
+/** Tail for provider failures: a dead opponent is reported, never silently replaced. */
+const NO_SUBSTITUTE_HINT =
+  " Не подставляй другую модель сам: сообщи пользователю, что оппонент не ответил, и спроси, повторить или выбрать другого.";
+
 /** Stable parity for blinding: a given debate replayed gives the same layout. */
 function hashParity(text) {
   let hash = 0x811c9dc5;
@@ -297,7 +331,26 @@ function saveDebate(config, debate) {
   // Runtime-only helper fields never belong in the file.
   delete debate.__config;
   delete debate.maxTranscriptChars;
-  writeFileSync(debatePath(config, debate.id), JSON.stringify(debate, null, 2), "utf8");
+  // Write to a temp file then rename: a crash mid-write must not leave a
+  // truncated, unreadable debate behind.
+  const target = debatePath(config, debate.id);
+  const tmp = `${target}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(debate, null, 2), "utf8");
+  try {
+    renameSync(tmp, target);
+  } catch (error) {
+    try { unlinkSync(tmp); } catch { /* best effort */ }
+    throw error;
+  }
+}
+
+/** A turn marked pending is live only while it is recent; a crash must not wedge a debate forever. */
+const PENDING_STALE_MS = 15 * 60 * 1000;
+function isBusy(debate) {
+  const pending = debate?.pending;
+  if (pending === null || pending === undefined) return false;
+  const at = Date.parse(pending.at ?? "");
+  return Number.isFinite(at) ? Date.now() - at < PENDING_STALE_MS : true;
 }
 
 function newDebate({ id, topic, kind, mode, intensity, left, right, stance, attach, cwd, web }) {
@@ -490,6 +543,7 @@ function systemFor(debate, side, config) {
     '- Concede only what the opponent actually demonstrated, and say "conceded:" plus the specific point. Never concede to be agreeable; never fabricate agreement either.',
     "- If the opponent is simply right, say so in one line and name the strongest remaining doubt instead of manufacturing a fight.",
     "- End with one observation or test that would settle the disagreement.",
+    "- Do not repeat a point the transcript already answered; refer to it in a few words. If you have no new argument, no new evidence and no new test, say \"no new argument\" in one line and name the one thing that still separates you — a rephrased repeat wastes the round for both sides.",
     "- When a claim is about a whole file, read it with `whole: true`. A 200-line slice does not support a statement about the file, and a line-number citation taken from a slice proves less than it looks.",
     "- When a claim is about tests passing, failing or missing, `run` executes the project's own suite and returns the exit code. Buy the result instead of arguing about it.",
     "- When the debate is not about the project you get no repo tools, and that is normal — argue from what is in front of you. Searching the web is off unless this debate asked for it; an opinion about tea and coffee is not a research task.",
@@ -595,7 +649,8 @@ const JUDGE_SYSTEM = [
   "4. refuted: the claims actually defeated, attributed to A or B, naming the argument that defeated them.",
   "5. debt: one objection each side must still answer, plus the artefacts you verified for it and the ones you could not. \"none\" is allowed only with a sentence saying why that side carries no debt.",
   "6. verdict: 3-5 sentences naming the stronger case, or \"draw\" / \"both wrong\".",
-  "A ruling that splits the difference to seem fair is a wrong ruling; so is one that rewards the longer answer.",
+  "A ruling that splits the difference to seem fair is a wrong ruling; so is one that rewards the longer answer. \"draw\" is allowed only when each side has an unrefuted claim the other cannot answer, and you must name both claims.",
+  "Number claims so a reader can follow them: A1, A2 / B1, B2 — and cite those labels in sections 3 to 5 instead of retyping the claim. Keep the whole ruling under about 450 words; a ruling that restates the transcript is a worse ruling.",
 ].join("\n");
 
 /** The judge gets the same blind rules plus the debate's language. */
@@ -949,7 +1004,11 @@ function readAttachments(paths, config) {
     const raw = typeof entry === "string" ? entry.trim() : "";
     if (raw === "") continue;
     try {
-      const text = readFileSync(expandHome(raw), "utf8");
+      const full = expandHome(raw);
+      // Check the size first: reading a multi-gigabyte file just to cut it down
+      // would stall the host before the cap ever applied.
+      if (statSync(full).size > 8 * 1024 * 1024) throw new Error("file is larger than 8 MB");
+      const text = readFileSync(full, "utf8");
       const limit = Math.min(MAX_FILE_CHARS, Math.max(budget, 0));
       const clipped = text.length > limit ? `${text.slice(0, limit)}\n[truncated]` : text;
       budget -= clipped.length;
@@ -985,7 +1044,7 @@ const DESCRIPTION = [
   "",
   "The other side is not limited to your summary: it can read the project itself (`read`/`grep`/`glob`/`git`, scoped to `cwd`), and every turn reports what it actually read.",
   "",
-  "Models are optional and the profile wins. `open` with only a `topic` uses the profile's opponent and judge — that is the normal case, because the profile already names them. If the user says \"Gemini\" or \"Claude\", that already *is* the configured opponent: do not look it up, do not pass an id, start the debate. Pass `opponent`/`judge` only for an exact `provider/model` the user typed; never invent a model id, and do not browse the catalog before arguing.",
+  "Models are optional and the profile wins. `open` with only a `topic` uses the profile's opponent and judge — that is the normal case, because the profile already names them. If the user says \"Gemini\" or \"Claude\", that already *is* the configured opponent: do not look it up, do not pass an id, start the debate. Pass `opponent`/`judge` only for an exact `provider/model` the user typed; never invent a model id, and do not browse the catalog before arguing. The judge chosen in the settings is refused as a debater unless the operator turned on «судья может участвовать» in the panel; you never decide that yourself. If the configured opponent fails or times out you do NOT swap in another model yourself: tell the user and ask.",
   "",
   "Web search is the caller's call, not a default: pass `web: true` only when the user asked to use the internet, and both sides may then search. Otherwise they will not, and an opinion debate stays an opinion debate.",
   "",
@@ -1113,6 +1172,13 @@ function resultHeader(debate, turn, route) {
   return `[spar ${debate.id} · result r${round} · ${route.label} · ${(turn.ms / 1000).toFixed(1)}s${cut}]`;
 }
 
+/** After a long run, say so: the cheapest way to stop a loop is to name it. */
+function roundHint(debate) {
+  const rounds = debate.turns.filter((entry) => entry.role === "right").length;
+  if (rounds < 5 || debate.kind === "duel") return "";
+  return `\n\n· раундов: ${rounds}. Если новых аргументов нет, закрывай спор: action:"verdict".`;
+}
+
 function clip(text) {
   return text.length <= MAX_RESULT_CHARS ? text : `${text.slice(0, MAX_RESULT_CHARS)}\n[reply truncated at ${MAX_RESULT_CHARS} chars]`;
 }
@@ -1168,6 +1234,7 @@ export function apply(ctx, rawConfig = {}) {
     challenger: baseConfig.challenger,
     language: baseConfig.language,
     tools: baseConfig.tools,
+    selfJudge: baseConfig.selfJudge === true,
     maxToolRounds: baseConfig.maxToolRounds,
     maxReplyTokens: baseConfig.maxReplyTokens,
     judgeTokens: baseConfig.judgeTokens,
@@ -1181,6 +1248,7 @@ export function apply(ctx, rawConfig = {}) {
     config.challenger = saved.challenger ?? baseConfig.challenger;
     config.language = saved.language ?? baseConfig.language;
     config.tools = saved.tools ?? baseConfig.tools;
+    config.selfJudge = saved.selfJudge ?? baseConfig.selfJudge;
     config.maxToolRounds = saved.maxToolRounds ?? baseConfig.maxToolRounds;
     config.maxReplyTokens = saved.maxReplyTokens ?? baseConfig.maxReplyTokens;
     config.judgeTokens = saved.judgeTokens ?? baseConfig.judgeTokens;
@@ -1229,8 +1297,23 @@ export function apply(ctx, rawConfig = {}) {
       } catch {
         continue;
       }
-      const index = debate.turns.findIndex((turn) => turn?.call === callId);
-      if (index === -1) continue;
+      // The caller's own turn carries the same call id (it is saved before the
+      // opponent starts), so a reply is the non-"left" turn of that call.
+      const index = debate.turns.findIndex((turn) => turn?.call === callId && turn.role !== "left");
+      const mineTurn = debate.turns.find((turn) => turn?.call === callId && turn.role === "left");
+      const mine = typeof mineTurn?.text === "string" ? mineTurn.text : null;
+      if (index === -1) {
+        if (mine === null) continue;
+        // The question is on disk but the answer is not (yet, or ever): the card
+        // can still show what was asked, and why there is no reply.
+        return {
+          id,
+          pending: true,
+          mine,
+          failed: debate.failed ?? null,
+          route: debate.right?.label ?? null,
+        };
+      }
       const turn = debate.turns[index];
       const before = index > 0 ? debate.turns[index - 1] : null;
       const round = debate.turns.slice(0, index + 1).filter((entry) => entry.role !== "left").length;
@@ -1241,10 +1324,11 @@ export function apply(ctx, rawConfig = {}) {
         route: typeof turn.route === "string" ? turn.route : null,
         ms: typeof turn.ms === "number" ? turn.ms : 0,
         text: typeof turn.text === "string" ? turn.text : "",
-        mine: turn.role !== "judge" && before?.role === "left" && typeof before.text === "string" ? before.text : null,
+        used: Array.isArray(turn.used) ? turn.used.slice(0, 40) : [],
+        truncated: turn.truncated === true,
+        mine: turn.role !== "judge" ? (mine ?? (before?.role === "left" && typeof before.text === "string" ? before.text : null)) : null,
       };
-    }
-    return null;
+    }    return null;
   };
   // Routes are browser-facing: the settings panel, the live turn a card polls, and
   // the durable turn it falls back to. `webServer` is a service, so it may not
@@ -1269,6 +1353,12 @@ export function apply(ctx, rawConfig = {}) {
             kind: "prefix",
             path: "/spar-turn",
             handler: (req, res) => {
+              const refusal = sameOriginRefusal(req);
+              if (refusal !== null) {
+                res.writeHead(403, { "content-type": "application/json" });
+                res.end(JSON.stringify({ error: refusal }));
+                return;
+              }
               const url = new URL(req.url ?? "/", "http://localhost");
               const call = url.searchParams.get("call") ?? "";
               const found = turnByCall(call);
@@ -1304,6 +1394,7 @@ export function apply(ctx, rawConfig = {}) {
                     challenger: config.challenger,
                     language: config.language,
                     tools: config.tools,
+                    selfJudge: config.selfJudge === true,
                     maxToolRounds: config.maxToolRounds,
                     maxReplyTokens: config.maxReplyTokens,
                     judgeTokens: config.judgeTokens,
@@ -1336,6 +1427,12 @@ export function apply(ctx, rawConfig = {}) {
     busy.add(id);
     try {
       return await run();
+    } catch (error) {
+      // Provider-side failures only: our own validation errors already say what to do.
+      if (error instanceof Error && /^spar: \S+\/\S+ (aborted after|failed:|returned no text)/.test(error.message) && !error.message.includes(NO_SUBSTITUTE_HINT)) {
+        error.message += NO_SUBSTITUTE_HINT;
+      }
+      throw error;
     } finally {
       busy.delete(id);
     }
@@ -1486,9 +1583,11 @@ export function apply(ctx, rawConfig = {}) {
        * a debate should not cost the calling agent: start it, keep working, then
        * read the turn with `result`.
        */
-      const start = (id, route, phase, task) => {
+      const start = (id, route, phase, task, held) => {
         if (args?.async === false) return task();
-        const pending = loadDebate(config, id);
+        // Reuse the caller's in-memory debate when it has one: loading a second copy
+        // and saving it beside the first is how a turn used to vanish from the file.
+        const pending = held ?? loadDebate(config, id);
         pending.pending = { phase, route: route.label, at: new Date().toISOString() };
         saveDebate(config, pending);
         Promise.resolve()
@@ -1547,6 +1646,7 @@ export function apply(ctx, rawConfig = {}) {
         const topic = typeof args?.topic === "string" ? args.topic.trim() : "";
         if (topic === "") throw new Error('spar open: "topic" is required');
         const right = resolveRoute(args?.opponent, config);
+        refuseJudgeAsDebater(right, config);
         const caller = exec?.agent?.options;
         const id = nextDebateId(config);
         const debate = newDebate({
@@ -1583,30 +1683,44 @@ export function apply(ctx, rawConfig = {}) {
             });
             return { text: `${header(debate, turn, right)}\n${clip(turn.text)}${usedLine(turn)}` };
           }),
+          debate,
         );
       }
 
       if (action === "say") {
         const id = typeof args?.id === "string" ? args.id.trim() : "";
         if (id === "") throw new Error('spar say: "id" is required (open a debate first)');
-        const message = typeof args?.message === "string" ? args.message.trim() : "";
+        // Capped here, not only when stored: the full text goes into the prompt.
+        const message = typeof args?.message === "string" ? args.message.trim().slice(0, MAX_TURN_CHARS) : "";
         if (message === "") throw new Error('spar say: "message" is required — write your actual argument');
         const debate = loadDebate(config, id);
         if (debate.closed) throw new Error(`spar: ${id} is closed`);
         if (debate.kind !== "spar") {
           throw new Error(`spar: ${id} is a duel — read it with verdict/show, or open a spar to argue yourself`);
         }
+        if (isBusy(debate)) {
+          throw new Error(
+            `spar say: ${id} is still writing its ${debate.pending.phase ?? "current"} turn (${debate.pending.route ?? "opponent"}). Read it with action:"result" first.`,
+          );
+        }
         if (Array.isArray(args?.files) && args.files.length > 0) addAttachments(debate, config, args.files);
+
+        // The caller's argument is saved NOW, before the opponent starts. It used to be
+        // written only when the opponent finished, so while the reply was running
+        // (and forever if it failed) the card had no trace of what was asked.
+        debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString(), call: callId });
+        debate.failed = null;
+        saveDebate(config, debate);
 
         return start(id, debate.right, "reply", () =>
           guard(id, async () => {
-            debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString() });
             const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, mine: message, repo: repoOf(debate) });
             // The reply only. The caller's own argument is already in the card above
             // this one (`mine`), and printing it again here made the transcript show
             // the same paragraph twice — the service answer duplicated the turn.
-            return { text: `${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}` };
+            return { text: `${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}${roundHint(debate)}` };
           }),
+          debate,
         );
       }
 
@@ -1635,6 +1749,8 @@ export function apply(ctx, rawConfig = {}) {
         if (sides !== null && sides.length > 2) throw new Error("spar duel: sides takes at most two models");
         const forSide = resolveRoute(sides?.[0], config);
         const againstSide = resolveRoute(sides?.[1] ?? args?.challenger ?? config.challenger, config);
+        refuseJudgeAsDebater(forSide, config);
+        refuseJudgeAsDebater(againstSide, config);
         if (sameRoute(forSide, againstSide)) {
           throw new Error(
             `spar duel: both sides resolved to ${forSide.label} — pass sides:["gemini","claude"] (or set challenger)`,
@@ -1663,11 +1779,11 @@ export function apply(ctx, rawConfig = {}) {
             if (round === 0) {
               await Promise.all([
                 runTurn(debate, "left", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) }),
-                runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) }),
+                runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId: callId ? `${callId}:b` : callId, repo: repoOf(debate) }),
               ]);
             } else {
               await runTurn(debate, "left", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
-              await runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId, repo: repoOf(debate) });
+              await runTurn(debate, "right", "", { maxTokens: args?.maxTokens, signal, callId: callId ? `${callId}:b` : callId, repo: repoOf(debate) });
             }
           }
           const transcript = debate.turns
@@ -1695,32 +1811,32 @@ export function apply(ctx, rawConfig = {}) {
       if (action === "verdict") {
         const id = typeof args?.id === "string" ? args.id.trim() : "";
         if (id === "") throw new Error('spar verdict: "id" is required');
-        const debate = loadDebate(config, id);
+        let debate = loadDebate(config, id);
         // Asking for a verdict while a turn is still being written judges a
         // half-transcript: the missing side then reads as "did not argue" and the
         // arbiter has to blame it. Wait for the turn, briefly, then proceed.
-        if (debate.pending !== null && debate.pending !== undefined) {
+        if (isBusy(debate)) {
           const deadline = Date.now() + Math.max(2_000, Number(config.verdictWaitMs) || 30_000);
+          let current = debate;
           while (Date.now() < deadline) {
             await new Promise((resolve) => setTimeout(resolve, 500));
-            const current = loadDebate(config, id);
-            if (current.pending === null || current.pending === undefined) {
-              debate.turns = current.turns;
-              break;
-            }
+            current = loadDebate(config, id);
+            if (!isBusy(current)) break;
           }
-          if (debate.pending !== null && debate.pending !== undefined) {
+          if (isBusy(current)) {
             throw new Error(
-              `spar verdict: the ${debate.pending.phase ?? "current"} turn from ${debate.pending.route ?? "the opponent"} is still being written. Read it with action:"result" first.`,
+              `spar verdict: the ${current.pending.phase ?? "current"} turn from ${current.pending.route ?? "the opponent"} is still being written. Read it with action:"result" first.`,
             );
           }
+          // Judge the file as it is now, not the snapshot taken before the wait.
+          debate = current;
         }
         const judge = judgeRoute(args?.judge, config, exec);
         const conflict =
           debate.kind === "duel"
             ? sameRoute(judge, debate.left) || sameRoute(judge, debate.right)
             : sameRoute(judge, debate.right);
-        if (conflict) throw new Error(`spar verdict: ${judge.label} is one of the debaters — choose an uninvolved judge`);
+        if (conflict && config.selfJudge !== true) throw new Error(`spar verdict: ${judge.label} is one of the debaters — choose an uninvolved judge`);
 
         return start(id, judge, "verdict", () =>
           guard(id, async () => {
@@ -1803,6 +1919,7 @@ export function apply(ctx, rawConfig = {}) {
               text: `${header(debate, turn, judge)}\n${clip(reply.text)}\n\nA = ${labelOf(aRole)} · B = ${labelOf(bRole)}`,
             };
           }),
+          debate,
         );
       }
 
@@ -1867,6 +1984,10 @@ export function apply(ctx, rawConfig = {}) {
         const id = typeof args?.id === "string" ? args.id.trim() : "";
         if (id === "") throw new Error('spar close: "id" is required');
         const debate = loadDebate(config, id);
+        // Closing under a running turn used to be overwritten when that turn saved.
+        if (isBusy(debate)) {
+          throw new Error(`spar close: ${id} is still writing a turn. Read it with action:"result", then close.`);
+        }
         debate.closed = true;
         saveDebate(config, debate);
         return { text: `closed ${id} · ${debate.turns.length} turns kept at ${debatePath(config, id)}` };
