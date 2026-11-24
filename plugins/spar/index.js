@@ -1287,6 +1287,7 @@ export function apply(ctx, rawConfig = {}) {
       try {
         const debate = loadDebate(config, id);
         const last = debate.turns[debate.turns.length - 1];
+        const judgeTurn = [...debate.turns].reverse().find((entry) => entry.role === "judge");
         rows.push({
           id,
           topic: String(debate.topic ?? "").slice(0, 140),
@@ -1294,6 +1295,9 @@ export function apply(ctx, rawConfig = {}) {
           kind: debate.kind ?? "debate",
           closed: debate.closed === true,
           verdict: debate.verdict !== null && debate.verdict !== undefined,
+          leftRoute: routeOfSide(debate.left) || null,
+          rightRoute: routeOfSide(debate.right) || (typeof debate.right?.label === "string" ? debate.right.label : null),
+          judgeRoute: typeof judgeTurn?.route === "string" ? judgeTurn.route : null,
           lastMs: typeof last?.ms === "number" ? last.ms : null,
           updatedAt: debate.updatedAt ?? null,
         });

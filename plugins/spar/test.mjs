@@ -1462,6 +1462,24 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 66. /spar-settings exposes leftRoute, rightRoute, and judgeRoute for the debates tab
+{
+  const { dir, cleanup } = sandboxDir("settingsdebates");
+  const { tool, routes } = makeHarness({ dir, text: "ответ" });
+  const callerExec = { signal: undefined, rootCallId: "c1", agent: { options: { provider: "antigravity", model: "gemini-4-carbon" } } };
+  await tool.execute({ action: "open", topic: "T", async: false }, callerExec);
+  await tool.execute({ action: "verdict", id: "d1", judge: "kimi", project: false, async: false }, callerExec);
+  const settingsRoute = routes.find((route) => route.path === "/spar-settings")?.handler;
+  let body = "";
+  settingsRoute({ method: "GET", url: "/spar-settings", headers: { host: "127.0.0.1:3080" } }, { writeHead() {}, end(raw) { body = raw; } });
+  const payload = JSON.parse(body);
+  eq(payload.debates.length, 1, "one debate indexed");
+  eq(payload.debates[0].leftRoute, "antigravity/gemini-4-carbon", "debate index carries leftRoute");
+  eq(payload.debates[0].rightRoute, "antigravity/gemini-3.8-flash", "debate index carries rightRoute");
+  eq(payload.debates[0].judgeRoute, "zexkora/kimi-k3", "debate index carries judgeRoute");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

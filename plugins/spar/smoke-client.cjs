@@ -500,6 +500,99 @@ for (const [label, props, expect] of cases) {
   console.log("opening A+B pair: ok — A начинает (старт) + B отвечает");
 }
 
+// Verify redesigned pill + open panel render brand logos, arena matchup, and debates tab icons.
+{
+  const seedPanel = (openState, tabState) => {
+    let idx = 0;
+    const origUseState = React.useState;
+    React.useState = (initial) => {
+      idx += 1;
+      // Panel state slots: 1=open, 2=closing, 3=catalog, 4=state, 5=draft, 6=note, 7=bad, 8=busy, 9=tab, 10=copiedId
+      if (idx === 1) return [openState, () => {}];
+      if (idx === 3) {
+        return [
+          {
+            providers: [{ id: "coarena-pool", name: "Coarena" }, { id: "antigravity", name: "Antigravity" }],
+            models: [
+              { provider: "coarena-pool", model: "deepseek-v4-1-flash-1017", label: "coarena-pool/deepseek-v4-1-flash-1017", chat: true },
+              { provider: "antigravity", model: "gemini-4-neon", label: "antigravity/gemini-4-neon", chat: true },
+            ],
+          },
+          () => {},
+        ];
+      }
+      if (idx === 4) {
+        return [
+          {
+            saved: {},
+            effective: {
+              profile: {
+                opponent: "coarena-pool/deepseek-v4-1-flash-1017",
+                judge: "antigravity/gemini-4-neon",
+                challenger: "anthropic/claude-sonnet-4-6",
+                language: "ru",
+                tools: true,
+                selfJudge: false,
+                temperatureOpponent: 0.8,
+                temperatureJudge: 0.25,
+              },
+              current: {
+                opponent: "coarena-pool/deepseek-v4-1-flash-1017",
+                judge: "antigravity/gemini-4-neon",
+              },
+            },
+            debates: [
+              {
+                id: "d73",
+                topic: "Модульный монолит против микросервисов",
+                turns: 4,
+                closed: false,
+                verdict: false,
+                leftRoute: "antigravity/gemini-4-carbon",
+                rightRoute: "coarena-pool/deepseek-v4-1-flash-1017",
+                lastMs: 14200,
+              },
+            ],
+          },
+          () => {},
+        ];
+      }
+      if (idx === 9) return [tabState, () => {}];
+      return origUseState(initial);
+    };
+    const tree = expandDeep(panel());
+    React.useState = origUseState;
+    return tree;
+  };
+
+  const closedPill = seedPanel(false, "models");
+  const closedSerialized = JSON.stringify(closedPill);
+  if (!closedSerialized.includes('"type":"svg"') || !closedSerialized.includes("#4D6BFE") || !closedSerialized.includes("#3186FF")) {
+    throw new Error("closed pill must display colored opponent & judge SVG logos");
+  }
+  if (!strings(closedPill).join(" | ").includes("1")) {
+    throw new Error("closed pill must show active debate count");
+  }
+  console.log("redesigned pill (logos + count): ok");
+
+  const openModels = seedPanel(true, "models");
+  const openText = strings(openModels).join(" | ");
+  if (!openText.includes("Спарринг") || !openText.includes("1 активн.") || !openText.includes("deepseek-v4-1-flash-1017") || !openText.includes("gemini-4-neon")) {
+    throw new Error(`open panel missing expected arena matchup: "${openText.slice(0, 220)}"`);
+  }
+  if (countAttr(openModels, "data-brand") < 4) {
+    throw new Error("open panel missing brand-styled chips/arena sides");
+  }
+  console.log("redesigned panel (arena + models): ok");
+
+  const openDebates = seedPanel(true, "debates");
+  const debatesText = strings(openDebates).join(" | ");
+  if (!debatesText.includes("d73") || !debatesText.includes("● открыт") || !debatesText.includes("gemini-4-carbon vs deepseek-v4-1-flash-1017")) {
+    throw new Error(`debates tab missing expected row details: "${debatesText}"`);
+  }
+  console.log("redesigned panel (debates tab): ok");
+}
+
 console.log("all card states render");
 
 // Exactly one polling loop may be scheduled per tick. A duplicated `setTimeout`

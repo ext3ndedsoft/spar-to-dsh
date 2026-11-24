@@ -1428,42 +1428,88 @@ window.__ModuleLoader__.load({
 @keyframes spp-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes spp-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.99)}}
 @keyframes spp-tab{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.spp .pill{display:flex;align-items:center;gap:8px;padding:6px 13px 6px 7px;border-radius:999px;
-	border:1px solid var(--p-line);background:rgba(10,10,10,.92);backdrop-filter:blur(10px);
-	box-shadow:0 10px 30px rgba(0,0,0,.45);transition:transform .16s ease,border-color .16s ease}
-.spp .pill:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.35)}
-.spp .pill b{font-size:12px;font-weight:600;letter-spacing:.02em}
+.spp .pill{display:flex;align-items:center;gap:8px;padding:5px 11px 5px 6px;border-radius:999px;
+	border:1px solid color-mix(in srgb,var(--p-opp,#6b7280) 28%,rgba(255,255,255,.11));
+	background:linear-gradient(135deg,color-mix(in srgb,var(--p-opp,#6b7280) 12%,transparent),color-mix(in srgb,var(--p-jud,#e5b83a) 8%,transparent) 70%),rgba(10,10,12,.92);
+	backdrop-filter:blur(12px);
+	box-shadow:0 12px 32px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.07);
+	transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.spp .pill:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--p-opp,#fff) 55%,rgba(255,255,255,.28));
+	box-shadow:0 14px 36px rgba(0,0,0,.62),0 0 18px color-mix(in srgb,var(--p-opp,#6b7280) 18%,transparent)}
+.spp .pill b{font-size:12px;font-weight:650;letter-spacing:.02em}
 .spp .mark{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-size:13px;font-weight:700;
-	background:#f0f0f0;color:#000;flex:none}
+	background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.05));
+	border:1px solid rgba(255,255,255,.16);color:#f4f4f5;flex:none}
+.spp .pill-pair{display:inline-flex;align-items:center;gap:4px;padding:2px 5px;border-radius:999px;
+	background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07)}
+.spp .pchip{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+	background:color-mix(in srgb,var(--chip,#6b7280) 16%,rgba(14,14,18,.95));
+	border:1px solid color-mix(in srgb,var(--chip,#6b7280) 42%,rgba(255,255,255,.1));
+	font-size:10px;font-weight:700;color:var(--p-fg);flex:none}
+.spp .pchip[data-brand="gemini"]{border-color:rgba(79,140,255,.5);box-shadow:0 0 8px rgba(49,134,255,.22)}
+.spp .pchip svg{display:block;flex:none}
+.spp .pill-vs{font-size:9px;color:var(--p-dim);opacity:.7;line-height:1}
+.spp .live-wrap{display:inline-flex;align-items:center;gap:4px;margin-left:1px}
 .spp .live{width:6px;height:6px;border-radius:99px;background:var(--p-faint)}
 .spp .live[data-on="1"]{background:var(--p-accent2);box-shadow:0 0 8px var(--p-accent2)}
+.spp .pill-cnt{font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--p-accent2)}
 
-.spp .panel{width:408px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
-	border:1px solid var(--p-line);background:rgba(8,8,8,.97);backdrop-filter:blur(16px);
-	box-shadow:0 28px 80px rgba(0,0,0,.65);animation:spp-in .24s cubic-bezier(.2,.9,.25,1) both}
+.spp .panel{width:432px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
+	border:1px solid rgba(255,255,255,.11);
+	background:
+		radial-gradient(circle at 12% 0%,color-mix(in srgb,var(--p-opp,#6b7280) 13%,transparent),transparent 42%),
+		radial-gradient(circle at 88% 0%,color-mix(in srgb,var(--p-jud,#e5b83a) 11%,transparent),transparent 42%),
+		rgba(8,8,10,.97);
+	backdrop-filter:blur(18px);
+	box-shadow:0 28px 80px rgba(0,0,0,.68),inset 0 1px 0 rgba(255,255,255,.06);
+	animation:spp-in .24s cubic-bezier(.2,.9,.25,1) both}
 .spp .panel.closing{animation:spp-out .16s ease-in forwards}
-.spp .inner{display:flex;flex-direction:column;max-height:min(80vh,700px)}
+.spp .inner{display:flex;flex-direction:column;max-height:min(82vh,740px)}
 
 .spp .top{padding:14px 14px 0;display:flex;align-items:center;gap:10px}
+.spp .top-title{display:flex;align-items:center;gap:7px}
 .spp .top h1{font-size:14px;font-weight:650;margin:0;letter-spacing:.01em}
+.spp .top-badge{font-size:10px;padding:1px 7px;border-radius:999px;color:var(--p-dim);
+	background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);font-variant-numeric:tabular-nums}
+.spp .top-badge[data-on="1"]{color:var(--p-accent2);background:rgba(52,211,153,.11);border-color:rgba(52,211,153,.28)}
 .spp .top small{display:block;font-size:10.5px;color:var(--p-dim);margin-top:1px}
 .spp .x{margin-left:auto;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:var(--p-dim);font-size:16px;line-height:1}
 .spp .x:hover{color:var(--p-fg);background:rgba(255,255,255,.07)}
 
-/* the match: who argues against whom, before and after you touch anything */
+/* arena matchup: full brand-tinted fighter cards with circular SVG avatars */
 .spp .match{margin:12px 14px 0;display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:8px}
-.spp .side{position:relative;min-width:0;padding:8px 10px 8px 13px;border-radius:12px;background:linear-gradient(135deg,color-mix(in srgb,var(--rail,#6b7280) 10%,transparent),transparent 65%),var(--p-card);border:1px solid color-mix(in srgb,var(--rail,#6b7280) 24%,var(--p-line))}
-.spp .side::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--rail,#6b7280)}
-.spp .side i{display:flex;align-items:center;justify-content:space-between;gap:6px;font-style:normal;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--p-dim)}
-.spp .side i svg{flex:none}
-.spp .side b{display:block;font-size:11.5px;font-weight:600;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .side{position:relative;min-width:0;display:flex;align-items:center;gap:9px;padding:9px 10px 9px 12px;border-radius:14px;
+	background:linear-gradient(135deg,color-mix(in srgb,var(--rail,#6b7280) 13%,transparent),transparent 70%),var(--p-card);
+	border:1px solid color-mix(in srgb,var(--rail,#6b7280) 30%,var(--p-line));overflow:hidden}
+.spp .side[data-brand="gemini"]{
+	border-color:rgba(79,140,255,.36);
+	background:
+		radial-gradient(circle at 0% 0%,rgba(49,134,255,.16),transparent 52%),
+		radial-gradient(circle at 60% 0%,rgba(8,185,98,.09),transparent 52%),
+		radial-gradient(circle at 100% 100%,rgba(249,69,67,.10),transparent 52%),
+		var(--p-card);
+}
+.spp .side::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--rail-grad,var(--rail,#6b7280))}
+.spp .side-av{width:32px;height:32px;border-radius:50%;flex:none;display:grid;place-items:center;
+	background:color-mix(in srgb,var(--rail,#6b7280) 16%,rgba(14,14,18,.94));
+	border:1px solid color-mix(in srgb,var(--rail,#6b7280) 42%,rgba(255,255,255,.1));
+	font-size:13px;font-weight:700;color:var(--p-fg)}
+.spp .side[data-brand="gemini"] .side-av{border-color:rgba(79,140,255,.5);box-shadow:0 0 12px rgba(49,134,255,.18)}
+.spp .side-txt{min-width:0;flex:1}
+.spp .side i{display:flex;align-items:center;justify-content:space-between;gap:4px;font-style:normal;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--p-dim)}
+.spp .side b{display:block;font-size:11.5px;font-weight:600;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spp .side em{display:block;font-style:normal;font-size:10px;color:var(--p-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spp .vs{align-self:center;font-size:9.5px;color:var(--p-faint);letter-spacing:.08em}
+.spp .vs{align-self:center;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+	font-size:10px;font-weight:650;color:var(--p-dim);background:rgba(255,255,255,.045);border:1px solid var(--p-line)}
+.spp .vs[data-clash="1"]{color:var(--p-bad);border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.12)}
+.spp .duel-bar{margin:7px 14px 0;padding:5px 10px;border-radius:10px;display:flex;align-items:center;gap:7px;
+	font-size:10.5px;color:var(--p-dim);background:rgba(255,255,255,.03);border:1px solid var(--p-line)}
+.spp .duel-bar b{color:var(--p-fg);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .spp .tabs{display:flex;gap:2px;margin:12px 14px 0;padding:3px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--p-line)}
 .spp .tabs button{flex:1;padding:6px 0;border-radius:9px;font-size:11.5px;color:var(--p-dim);transition:background .15s,color .15s}
 .spp .tabs button:hover{color:var(--p-fg)}
-.spp .tabs button[aria-selected="true"]{background:rgba(255,255,255,.12);color:var(--p-fg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.spp .tabs button[aria-selected="true"]{background:rgba(255,255,255,.12);color:var(--p-fg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
 .spp .tabs sup{font-size:9px;margin-left:3px;color:var(--p-faint)}
 
 .spp .body{flex:1;min-height:0;overflow:auto;padding:12px 14px 4px;animation:spp-tab .18s ease both}
@@ -1472,29 +1518,42 @@ window.__ModuleLoader__.load({
 .spp .group{padding:11px 12px 4px;margin-bottom:10px;border-radius:14px;background:var(--p-card);border:1px solid var(--p-line)}
 .spp .group > h2{margin:0 0 9px;font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--p-dim)}
 .spp .row{margin-bottom:10px}
-.spp .row label,.spp .row .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:#c4c4c4;margin-bottom:4px}
+.spp .row label,.spp .row .lab{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:#c4c4c4;margin-bottom:5px}
 .spp .row label small,.spp .row .lab small{font-size:10px;color:var(--p-faint)}
+.spp .role-head{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.spp .role-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 7px 2px 3px;border-radius:999px;
+	font-size:10px;color:var(--p-fg);background:color-mix(in srgb,var(--rtint,#6b7280) 14%,rgba(255,255,255,.04));
+	border:1px solid color-mix(in srgb,var(--rtint,#6b7280) 32%,var(--p-line));max-width:170px}
+.spp .role-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spp select,.spp input[type=number]{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--p-line);
-	background:rgba(0,0,0,.25);outline:none;font-size:12px;transition:border-color .15s,background .15s}
-.spp select:hover,.spp input:hover{border-color:rgba(255,255,255,.18)}
-.spp select:focus,.spp input:focus{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.05)}
+	background:rgba(0,0,0,.28);outline:none;font-size:12px;transition:border-color .15s,background .15s}
+.spp select:hover,.spp input:hover{border-color:rgba(255,255,255,.2)}
+.spp select:focus,.spp input:focus{border-color:color-mix(in srgb,var(--rtint,#fff) 60%,rgba(255,255,255,.35));background:rgba(255,255,255,.05)}
 .spp option{background:#111}.spp option:disabled{color:#666}
 .spp .seg{display:flex;gap:4px}
-.spp .seg button{flex:1;padding:6px 4px;border-radius:9px;border:1px solid var(--p-line);background:rgba(0,0,0,.2);
+.spp .seg button{flex:1;padding:6px 4px;border-radius:9px;border:1px solid var(--p-line);background:rgba(0,0,0,.22);
 	font-size:11px;color:var(--p-dim);transition:.15s;white-space:nowrap}
 .spp .seg button:hover{color:var(--p-fg);border-color:rgba(255,255,255,.2)}
-.spp .seg button[data-on="1"]{color:var(--p-fg);border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.12)}
+.spp .seg button[data-on="1"]{color:var(--p-fg);border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.12)}
 .spp .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
-.spp .deb{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:9px 11px;margin-bottom:7px;border-radius:12px;
-	background:var(--p-card);border:1px solid var(--p-line)}
+.spp .deb{display:flex;flex-direction:column;gap:5px;padding:9px 11px;margin-bottom:7px;border-radius:13px;cursor:pointer;
+	text-align:left;width:100%;
+	background:linear-gradient(135deg,color-mix(in srgb,var(--d-right,#6b7280) 8%,transparent),transparent 65%),var(--p-card);
+	border:1px solid color-mix(in srgb,var(--d-right,#6b7280) 20%,var(--p-line));transition:border-color .15s,background .15s}
+.spp .deb:hover{border-color:color-mix(in srgb,var(--d-right,#fff) 45%,var(--p-line))}
+.spp .deb-top{display:flex;align-items:center;gap:6px;width:100%}
 .spp .deb b{font-variant-numeric:tabular-nums;color:var(--p-accent);font-size:11.5px}
-.spp .deb em{font-style:normal;font-size:10px;color:var(--p-dim);text-align:right}
+.spp .deb-icons{display:inline-flex;align-items:center;gap:3px}
+.spp .deb em{margin-left:auto;font-style:normal;font-size:10px;color:var(--p-dim);white-space:nowrap}
 .spp .deb[data-v="1"] em{color:var(--p-gold)}
-.spp .deb span{grid-column:1/-1;font-size:11.5px;color:#c4c4c4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.spp .deb[data-open="1"] em{color:var(--p-accent2)}
+.spp .deb-topic{font-size:11.5px;color:#d0d0d5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
+.spp .deb-sub{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;color:var(--p-faint)}
+.spp .deb-sub span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spp .empty{padding:22px 0;text-align:center;font-size:11.5px;color:var(--p-dim)}
 
-.spp .foot{display:flex;align-items:center;gap:8px;padding:11px 14px 13px;border-top:1px solid var(--p-line);background:rgba(0,0,0,.18)}
+.spp .foot{display:flex;align-items:center;gap:8px;padding:11px 14px 13px;border-top:1px solid var(--p-line);background:rgba(0,0,0,.22)}
 .spp .save{position:relative;padding:7px 16px;border-radius:11px;font-size:12px;font-weight:650;color:#000;
 	background:#f0f0f0;transition:opacity .15s,transform .15s}
 .spp .save:hover:not([disabled]){transform:translateY(-1px)}
@@ -1574,6 +1633,7 @@ window.__ModuleLoader__.load({
 			const [bad, setBad] = React.useState(false);
 			const [busy, setBusy] = React.useState(false);
 			const [tab, setTab] = React.useState("models");
+			const [copiedId, setCopiedId] = React.useState("");
 			// setState after the panel closed (or unmounted) is a leak and a warning.
 			const alive = React.useRef(true);
 			React.useEffect(() => {
@@ -1622,6 +1682,11 @@ window.__ModuleLoader__.load({
 						setNote("маршрут настроек не отвечает");
 					});
 			};
+
+			// Preload once on mount so the closed pill displays the active models and live count.
+			React.useEffect(() => {
+				load();
+			}, []);
 
 			React.useEffect(() => {
 				if (open) load();
@@ -1708,28 +1773,91 @@ window.__ModuleLoader__.load({
 			if (!selfJudgeOn && pickedOpponent !== "") judgeBlock[pickedOpponent] = "оппонент";
 			if (!selfJudgeOn && pickedChallenger !== "") judgeBlock[pickedChallenger] = "вторая сторона";
 
+			const openDebates = debates.filter((row) => row.closed !== true).length;
+			const oppBrand = brandOf(pickedOpponent);
+			const judBrand = pickedJudge === "self" ? "" : brandOf(pickedJudge);
+			const oppTint = tintOf(pickedOpponent);
+			const judTint = pickedJudge === "self" ? "#e5b83a" : tintOf(pickedJudge);
+			const chipOf = (value, fallback = "?", size = 12) => {
+				const b = value === "self" ? "" : brandOf(value);
+				const icon = b !== "" ? brandSvg(b, size) : null;
+				const chipTint = value === "self" ? "#e5b83a" : tintOf(value);
+				return jsx("span", {
+					className: "pchip",
+					"data-brand": b || undefined,
+					style: { "--chip": chipTint },
+					title: value === "self" ? "я сам (моя модель)" : value || undefined,
+					children: icon ?? (value === "self" ? "⚖" : fallback),
+				});
+			};
+
 			const pill = jsxs("button", {
 				type: "button",
 				className: "pill",
 				key: "pill",
+				style: { "--p-opp": oppTint, "--p-jud": judTint },
 				"aria-label": open ? "Закрыть настройки спарринга" : "Открыть настройки спарринга",
 				"aria-expanded": open ? "true" : "false",
 				onClick: () => (open ? requestClose() : setOpen(true)),
-				title: open ? "свернуть" : "спарринг: модели и настройки",
+				title: open ? "свернуть" : `${pickedOpponent || "оппонент"} vs ${pickedJudge || "судья"}`,
 				children: [
 					jsx("span", { className: "mark", children: "◈" }),
 					jsx("b", { children: "spar" }),
-					jsx("span", { className: "live", "data-on": debates.some((row) => row.closed !== true) ? "1" : "0", "aria-hidden": "true" }),
+					pickedOpponent !== "" || pickedJudge !== ""
+						? jsxs("span", {
+								className: "pill-pair",
+								"aria-hidden": "true",
+								children: [
+									chipOf(pickedOpponent, "B", 12),
+									jsx("span", { className: "pill-vs", children: "×" }),
+									chipOf(pickedJudge, "⚖", 12),
+								],
+							})
+						: null,
+					jsxs("span", {
+						className: "live-wrap",
+						"aria-hidden": "true",
+						children: [
+							jsx("span", { className: "live", "data-on": openDebates > 0 ? "1" : "0" }),
+							openDebates > 0 ? jsx("span", { className: "pill-cnt", children: String(openDebates) }) : null,
+						],
+					}),
 				],
 			});
 
-			if (!open) return jsx("div", { className: "spp", children: pill });
+			if (!open) return jsx("div", { className: "spp", style: { "--p-opp": oppTint, "--p-jud": judTint }, children: pill });
 
-const field = (id, label, hint, control) =>
+			const field = (id, label, hint, control) =>
 				jsxs("div", {
 					className: "row",
 					children: [jsxs("label", { htmlFor: id, children: [label, hint ? jsx("small", { children: hint }) : null] }), control],
 				});
+
+			const roleField = (id, label, hint, picked, control) => {
+				const shortName = picked === "self" ? "я сам" : picked ? modelOf(picked) : "не выбран";
+				const rTint = picked === "self" ? "#e5b83a" : tintOf(picked);
+				return jsxs("div", {
+					className: "row",
+					style: { "--rtint": rTint },
+					children: [
+						jsxs("label", {
+							htmlFor: id,
+							children: [
+								jsxs("span", {
+									className: "role-head",
+									children: [label, hint ? jsx("small", { children: hint }) : null],
+								}),
+								jsxs("span", {
+									className: "role-pill",
+									title: picked || undefined,
+									children: [chipOf(picked, "·", 11), jsx("span", { children: shortName })],
+								}),
+							],
+						}),
+						control,
+					],
+				});
+			};
 
 			// One choice among a few, with "профиль" always first: the way back to the default.
 			const chips = (id, label, hint, key, values, profileValue) =>
@@ -1756,16 +1884,45 @@ const field = (id, label, hint, control) =>
 					],
 				});
 
+			const triSeg = (id, label, hint, key, options, profileLabel) =>
+				jsxs("div", {
+					className: "row",
+					children: [
+						jsxs("div", { className: "lab", id, children: [label, hint ? jsx("small", { children: hint }) : null] }),
+						jsx("div", {
+							className: "seg",
+							role: "group",
+							"aria-labelledby": id,
+							children: [
+								["", `профиль · ${profileLabel}`],
+								...options,
+							].map(([value, text]) => {
+								const current = typeof draft[key] === "boolean" ? String(draft[key]) : "";
+								const on = current === value;
+								return jsx("button", {
+									type: "button",
+									key: text,
+									"data-on": on ? "1" : "0",
+									"aria-pressed": on ? "true" : "false",
+									onClick: () => set(key, value === "" ? "" : value === "true"),
+									children: text,
+								});
+							}),
+						}),
+					],
+				});
+
 			const modelsTab = [
 				jsxs("div", {
 					className: "group",
 					key: "who",
 					children: [
-						jsx("h2", { children: "Кто спорит" }),
-						field(
+						jsx("h2", { children: "Участники" }),
+						roleField(
 							"spp-f1",
 							"оппонент",
-							"отвечает на ваши аргументы",
+							"отвечает",
+							pickedOpponent,
 							jsx("select", {
 								id: "spp-f1",
 								value: draft.opponent ?? "",
@@ -1773,10 +1930,11 @@ const field = (id, label, hint, control) =>
 								children: modelOptions(models, true, inheritLabel("оппонент", profile.opponent, catalog), draft.opponent ?? "", debaterBlock),
 							}),
 						),
-						field(
+						roleField(
 							"spp-f3",
-							"вторая сторона дуэли",
-							"для режима duel",
+							"вторая сторона",
+							"для duel",
+							pickedChallenger,
 							jsx("select", {
 								id: "spp-f3",
 								value: draft.challenger ?? "",
@@ -1784,10 +1942,11 @@ const field = (id, label, hint, control) =>
 								children: modelOptions(models, true, inheritLabel("соперник", profile.challenger, catalog), draft.challenger ?? "", debaterBlock),
 							}),
 						),
-						field(
+						roleField(
 							"spp-f2",
 							"судья",
-							"выносит приговор",
+							"приговор",
+							pickedJudge,
 							jsx("select", {
 								id: "spp-f2",
 								value: draft.judge ?? "",
@@ -1799,23 +1958,13 @@ const field = (id, label, hint, control) =>
 								],
 							}),
 						),
-						field(
+						triSeg(
 							"spp-f9",
-							"судья может участвовать",
-							"одна модель и в споре, и на суде",
-							jsx("select", {
-								id: "spp-f9",
-								value: typeof draft.selfJudge === "boolean" ? String(draft.selfJudge) : "",
-								onChange: (event) => {
-									const value = event.target.value;
-									set("selfJudge", value === "" ? "" : value === "true");
-								},
-								children: [
-									jsx("option", { value: "", children: `как в профиле · ${profile.selfJudge === true ? "можно" : "нельзя"}`, key: "auto" }),
-									jsx("option", { value: "true", children: "можно", key: "on" }),
-									jsx("option", { value: "false", children: "нельзя", key: "off" }),
-								],
-							}),
+							"судья может спорить",
+							"одна модель в обеих ролях",
+							"selfJudge",
+							[["true", "можно"], ["false", "нельзя"]],
+							profile.selfJudge === true ? "можно" : "нельзя",
 						),
 					],
 				}),
@@ -1862,24 +2011,13 @@ const field = (id, label, hint, control) =>
 					key: "read",
 					children: [
 						jsx("h2", { children: "Чтение проекта" }),
-						// Three states, one of them "не решать": a plain switch could never give the value back to the profile.
-						field(
+						triSeg(
 							"spp-f4",
 							"оппонент читает файлы",
 							"",
-							jsx("select", {
-								id: "spp-f4",
-								value: typeof draft.tools === "boolean" ? String(draft.tools) : "",
-								onChange: (event) => {
-									const value = event.target.value;
-									set("tools", value === "" ? "" : value === "true");
-								},
-								children: [
-									jsx("option", { value: "", children: `как в профиле · ${profile.tools === false ? "выключено" : "включено"}`, key: "auto" }),
-									jsx("option", { value: "true", children: "включено", key: "on" }),
-									jsx("option", { value: "false", children: "выключено", key: "off" }),
-								],
-							}),
+							"tools",
+							[["true", "вкл"], ["false", "выкл"]],
+							profile.tools === false ? "выкл" : "вкл",
 						),
 						field(
 							"spp-f5",
@@ -1948,18 +2086,67 @@ const field = (id, label, hint, control) =>
 			const debatesTab =
 				debates.length === 0
 					? jsx("div", { className: "empty", children: "Споров пока нет. Они появятся после первого вызова spar." })
-					: debates.map((row) =>
-							jsxs("div", {
+					: debates.map((row) => {
+							const leftName = row.leftRoute ? modelOf(row.leftRoute) : "A";
+							const rightName = row.rightRoute ? modelOf(row.rightRoute) : "B";
+							const statusLabel = row.verdict
+								? "⚖ приговор"
+								: row.closed
+									? `закрыт · ${row.turns} ход.`
+									: `● открыт · ${row.turns} ход.`;
+							return jsxs("button", {
+								type: "button",
 								className: "deb",
 								key: row.id,
 								"data-v": row.verdict ? "1" : "0",
+								"data-open": !row.closed && !row.verdict ? "1" : "0",
+								style: { "--d-right": tintOf(row.rightRoute ?? "") },
+								title: `Нажми, чтобы скопировать ${row.id}`,
+								onClick: () => {
+									try {
+										navigator.clipboard.writeText(row.id).then(
+											() => {
+												setCopiedId(row.id);
+												setTimeout(() => setCopiedId(""), 1300);
+											},
+											() => {},
+										);
+									} catch {
+										/* clipboard unavailable */
+									}
+								},
 								children: [
-									jsx("b", { children: row.id }),
-									jsx("em", { children: row.verdict ? "⚖ приговор" : `${row.turns} ход.` }),
-									jsx("span", { children: row.topic }),
+									jsxs("div", {
+										className: "deb-top",
+										children: [
+											jsx("b", { children: row.id }),
+											row.leftRoute || row.rightRoute
+												? jsxs("span", {
+														className: "deb-icons",
+														"aria-hidden": "true",
+														children: [
+															row.leftRoute ? chipOf(row.leftRoute, "A", 11) : null,
+															row.rightRoute ? chipOf(row.rightRoute, "B", 11) : null,
+															row.judgeRoute ? chipOf(row.judgeRoute, "⚖", 11) : null,
+														],
+													})
+												: null,
+											jsx("em", { children: copiedId === row.id ? "✓ скопировано" : statusLabel }),
+										],
+									}),
+									jsx("span", { className: "deb-topic", children: row.topic }),
+									row.leftRoute || row.rightRoute
+										? jsxs("div", {
+												className: "deb-sub",
+												children: [
+													jsx("span", { children: `${leftName} vs ${rightName}` }),
+													row.lastMs ? jsx("span", { children: fmtSeconds(row.lastMs) }) : null,
+												],
+											})
+										: null,
 								],
-							}),
-						);
+							});
+						});
 
 			const tabs = [
 				["models", "Модели"],
@@ -1967,16 +2154,27 @@ const field = (id, label, hint, control) =>
 				["debates", "Споры"],
 			];
 			const sideView = (role, value) => {
-				const text = value === "self" ? "я сам" : String(value || "не выбран");
+				const isSelf = value === "self";
+				const text = isSelf ? "я сам" : String(value || "не выбран");
 				const slash = text.lastIndexOf("/");
-				const icon = brandSvg(brandOf(value), 12);
+				const brand = isSelf ? "" : brandOf(value);
+				const rail = isSelf ? "#e5b83a" : tintOf(value);
+				const railGrad = isSelf ? "linear-gradient(180deg,#f2cc5a,#b8860b)" : accent(value);
+				const icon = brand !== "" ? brandSvg(brand, 19) : isSelf ? "⚖" : "◈";
 				return jsxs("div", {
 					className: "side",
-					style: { "--rail": tintOf(value) },
+					"data-brand": brand || undefined,
+					style: { "--rail": rail, "--rail-grad": railGrad },
 					children: [
-						jsxs("i", { children: [role, icon] }),
-						jsx("b", { title: text, children: slash >= 0 ? text.slice(slash + 1) : text }),
-						jsx("em", { children: slash >= 0 ? text.slice(0, slash) : value === "self" ? "модель, что вызвала spar" : "" }),
+						jsx("span", { className: "side-av", "aria-hidden": "true", children: icon }),
+						jsxs("div", {
+							className: "side-txt",
+							children: [
+								jsx("i", { children: role }),
+								jsx("b", { title: text, children: slash >= 0 ? text.slice(slash + 1) : text }),
+								jsx("em", { children: slash >= 0 ? text.slice(0, slash) : isSelf ? "модель, что вызвала spar" : "" }),
+							],
+						}),
 					],
 				});
 			};
@@ -1985,6 +2183,7 @@ const field = (id, label, hint, control) =>
 
 			return jsx("div", {
 				className: "spp",
+				style: { "--p-opp": oppTint, "--p-jud": judTint },
 				children: [jsx("div", {
 					key: "panel",
 					className: "panel" + (closing ? " closing" : ""),
@@ -1998,15 +2197,45 @@ const field = (id, label, hint, control) =>
 								children: [
 									jsx("span", { className: "mark", children: "◈" }),
 									jsxs("div", {
-										children: [jsx("h1", { children: "Спарринг" }), jsx("small", { children: "модели, судья и лимиты · применяются к следующему ходу" })],
+										children: [
+											jsxs("div", {
+												className: "top-title",
+												children: [
+													jsx("h1", { children: "Спарринг" }),
+													jsx("span", {
+														className: "top-badge",
+														"data-on": openDebates > 0 ? "1" : "0",
+														children: openDebates > 0 ? `${openDebates} активн.` : "готов",
+													}),
+												],
+											}),
+											jsx("small", { children: "модели, судья и лимиты · применяются к следующему ходу" }),
+										],
 									}),
 									jsx("button", { type: "button", className: "x", "aria-label": "Закрыть панель", title: "Закрыть", onClick: requestClose, children: "×" }),
 								],
 							}),
 							jsxs("div", {
 								className: "match",
-								children: [sideView("оппонент", pickedOpponent), jsx("span", { className: "vs", "aria-hidden": "true", children: "·" }), sideView("судья", pickedJudge)],
+								children: [
+									sideView("оппонент", pickedOpponent),
+									jsx("span", { className: "vs", "data-clash": clash ? "1" : "0", "aria-hidden": "true", children: clash ? "!" : "vs" }),
+									sideView("судья", pickedJudge),
+								],
 							}),
+							pickedChallenger !== ""
+								? jsxs("div", {
+										className: "duel-bar",
+										children: [
+											jsx("span", { children: "дуэль" }),
+											chipOf(pickedOpponent, "A", 11),
+											jsx("b", { children: modelOf(pickedOpponent) || "—" }),
+											jsx("span", { children: "×" }),
+											chipOf(pickedChallenger, "B", 11),
+											jsx("b", { children: modelOf(pickedChallenger) || "—" }),
+										],
+									})
+								: null,
 							clash
 								? jsx("div", {
 										className: "warn",
