@@ -265,22 +265,24 @@ const html = `<!doctype html>
   html,body{margin:0;width:456px;height:860px;background:#0d1117;overflow:hidden}
   .frame{width:456px;height:860px;padding:16px 12px;box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-    background:#09090c;border:1.5px solid rgba(255,255,255,0.14);border-radius:18px;overflow:hidden}
+    background:#ffffff;border:2px solid #0a0a0a;border-radius:18px;overflow:hidden}
   .top-bar{width:432px;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-  .tag-blk{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;background:#000;color:#fff;border:1px solid rgba(255,255,255,0.14);
+  .tag-blk{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;background:#0a0a0a;color:#fff;
     font-family:Consolas,'Cascadia Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.7px}
-  .tag-blk i{width:5px;height:5px;border-radius:50%;background:#34d399}
-  .tag-wht{padding:4px 11px;border-radius:999px;background:rgba(255,255,255,0.06);color:#f0f0f0;border:1px solid rgba(255,255,255,0.14);
-    font-family:Consolas,'Cascadia Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.5px}
+  .tag-blk i{width:5px;height:5px;border-radius:50%;background:#fff}
+  .tag-wht{padding:4px 11px;border-radius:999px;background:#fff;color:#0a0a0a;border:1.5px solid #0a0a0a;box-shadow:2px 2px 0 #0a0a0a;
+    font-family:Consolas,'Cascadia Mono',monospace;font-size:10px;font-weight:800;letter-spacing:0.5px}
 ${cardCss}
 ${panelCss}
   .spp{position:relative;right:auto;bottom:auto;width:432px}
-  .spp .panel{width:432px}
+  .spp .panel{width:432px;border:2px solid #0a0a0a;box-shadow:6px 6px 0 rgba(10,10,10,0.22),inset 0 1px 0 rgba(255,255,255,0.07)}
+  .spp .pill{border:2px solid #0a0a0a;box-shadow:4px 4px 0 rgba(10,10,10,0.22)}
   .spp .inner{max-height:none}
   .spp .body{overflow:visible}
   .spp, .spp *{animation:none !important;transition:none !important;opacity:1 !important}
   .cards-wrap{width:432px;display:flex;flex-direction:column;gap:10px}
-  .cards-wrap [data-spar-card]{margin:0}
+  .cards-wrap [data-spar-card]{margin:0;--spar-surface:#09090c;--spar-fg:#ececec;--spar-dim:#9ca3af;--spar-line:rgba(255,255,255,0.12);box-shadow:6px 6px 0 rgba(10,10,10,0.22)}
+  .cards-wrap [data-spar-card][data-state="past"]{background:#121216;border:1.5px solid #0a0a0a;box-shadow:4px 4px 0 rgba(10,10,10,0.16)}
   .cards-wrap [data-spar-pair]{margin:0}
 </style></head>
 <body>

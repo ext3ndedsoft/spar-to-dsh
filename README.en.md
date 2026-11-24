@@ -46,9 +46,9 @@ language, project access, readings per turn, budgets and per-role temperature.
 ## How it looks
 
 <p align="center">
-  <img src="assets/panel-spar.png?v=5" alt="spar settings overlay" width="360">
+  <img src="assets/panel-spar.png?v=6" alt="spar settings overlay" width="360">
   &nbsp;&nbsp;
-  <img src="assets/card-spar.png?v=5" alt="spar debate and verdict cards" width="360">
+  <img src="assets/card-spar.png?v=6" alt="spar debate and verdict cards" width="360">
 </p>
 
 ```text
