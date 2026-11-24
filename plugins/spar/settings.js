@@ -141,12 +141,16 @@ export async function modelCatalog(llm) {
     for (const entry of entries) {
       const id = entry?.id ?? entry?.model;
       if (typeof id !== "string" || id === "") continue;
+      const modelName = typeof entry?.name === "string" && entry.name.trim() !== "" ? entry.name.trim() : id;
+      const providerName = typeof provider?.name === "string" && provider.name.trim() !== "" ? provider.name.trim() : provider.id;
       const efforts = Array.isArray(entry.reasoning?.efforts)
         ? entry.reasoning.efforts.map((effort) => effort.id).filter((value) => typeof value === "string")
         : [];
       models.push({
         provider: provider.id,
+        providerName,
         model: id,
+        name: modelName,
         label: `${provider.id}/${id}`,
         chat: !NOT_CHAT.test(id),
         efforts,

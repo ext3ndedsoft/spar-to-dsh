@@ -1480,6 +1480,19 @@ const exec = { signal: undefined };
   cleanup();
 }
 
+// 67. modelCatalog exposes human-readable model and provider names
+{
+  const { modelCatalog } = await import("./settings.js");
+  const { llm } = makeHarness();
+  const cat = await modelCatalog(llm);
+  const gem = cat.models.find((entry) => entry.label === "antigravity/gemini-3.8-flash");
+  eq(gem?.name, "Gemini 3.8 Flash", "catalog preserves model display name");
+  eq(gem?.providerName, "Antigravity", "catalog preserves provider display name");
+  const ds = cat.models.find((entry) => entry.label === "zexkora/deepseek-v4.1-flash-1017");
+  eq(ds?.name, "deepseek-v4.1-flash-1017", "catalog falls back to model id when name is omitted");
+  eq(ds?.providerName, "Zexkora", "catalog maps provider display name");
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

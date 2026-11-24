@@ -453,6 +453,71 @@ window.__ModuleLoader__.load({
 			return BRAND_STYLES[brandOf(model)]?.tint ?? "#8b93a1";
 		}
 
+		let sharedCatalog = { providers: [], models: [] };
+		let catalogFetchStarted = false;
+		const catalogListeners = new Set();
+
+		function publishCatalog(next) {
+			if (!next || typeof next !== "object") return;
+			sharedCatalog = { providers: next.providers ?? [], models: next.models ?? [] };
+			for (const listener of catalogListeners) listener(sharedCatalog);
+		}
+
+		function useSharedCatalog() {
+			const [cat, setCat] = React.useState(sharedCatalog);
+			React.useEffect(() => {
+				catalogListeners.add(setCat);
+				if (!catalogFetchStarted && typeof fetch === "function") {
+					catalogFetchStarted = true;
+					fetch("/spar-models", { cache: "no-store" })
+						.then((response) => (response && response.ok ? response.json() : null))
+						.then((value) => {
+							if (value !== null) publishCatalog(value);
+							else catalogFetchStarted = false;
+						})
+						.catch(() => {
+							catalogFetchStarted = false;
+						});
+				}
+				return () => {
+					catalogListeners.delete(setCat);
+				};
+			}, []);
+			return cat;
+		}
+
+		function findCatalogModel(routeOrModel, catalog = sharedCatalog) {
+			const raw = String(routeOrModel ?? "").trim();
+			if (raw === "" || raw === "self") return null;
+			const list = catalog?.models ?? [];
+			return list.find((entry) => entry.label === raw) ?? list.find((entry) => entry.model === raw) ?? null;
+		}
+
+		function displayModel(routeOrModel, catalog = sharedCatalog, fallbackName = "") {
+			const raw = String(routeOrModel ?? "").trim();
+			if (raw === "") return "";
+			if (raw === "self") return "я сам";
+			const entry = findCatalogModel(raw, catalog);
+			if (typeof entry?.name === "string" && entry.name.trim() !== "" && entry.name !== entry.model) {
+				return entry.name.trim();
+			}
+			if (typeof fallbackName === "string" && fallbackName.trim() !== "") return fallbackName.trim();
+			if (typeof entry?.name === "string" && entry.name.trim() !== "") return entry.name.trim();
+			return modelOf(raw);
+		}
+
+		function displayProvider(routeOrModel, catalog = sharedCatalog) {
+			const raw = String(routeOrModel ?? "").trim();
+			if (raw === "" || raw === "self") return "";
+			const slash = raw.lastIndexOf("/");
+			const providerId = slash >= 0 ? raw.slice(0, slash) : "";
+			const entry = findCatalogModel(raw, catalog);
+			if (typeof entry?.providerName === "string" && entry.providerName.trim() !== "") return entry.providerName.trim();
+			if (providerId === "") return "";
+			const provider = (catalog?.providers ?? []).find((item) => item.id === providerId);
+			return typeof provider?.name === "string" && provider.name.trim() !== "" ? provider.name.trim() : providerId;
+		}
+
 		/** Split a reply into prose and fenced code so long arguments stay readable. */
 		function segments(text) {
 			const parts = [];
@@ -879,6 +944,7 @@ window.__ModuleLoader__.load({
 		function Head({ v, children }) {
 			const brand = v.phase === "verdict" || v.role === "judge" ? "" : brandOf(v.route || v.model);
 			const icon = brand === "" ? null : brandSvg(brand, 15);
+			const shownModel = v.model === "" ? "" : displayModel(v.route || v.model, sharedCatalog) || v.model;
 			return jsxs("div", {
 				"data-spar-head": "",
 				children: [
@@ -892,7 +958,7 @@ window.__ModuleLoader__.load({
 						"data-spar-who": "",
 						children: [
 							jsx("span", { "data-spar-name": "", children: v.name }),
-							v.model === "" ? null : jsx("span", { "data-spar-model": "", title: v.route ?? v.model, children: v.model }),
+							shownModel === "" ? null : jsx("span", { "data-spar-model": "", title: v.route ?? v.model, children: shownModel }),
 						],
 					}),
 					v.tag === "" ? null : jsx("span", { "data-spar-tag": "", "data-tone": v.tone ?? "", children: v.tag }),
@@ -1114,6 +1180,7 @@ window.__ModuleLoader__.load({
 			const working = !finishedResult && liveKnown && (!liveDone || (isDuelLive && liveBKnown && liveB.done !== true));
 			const smooth = useSmoothText(live?.text ?? "", working);
 			const smoothB = useSmoothText(liveB?.text ?? "", working);
+			useSharedCatalog();
 			const tint = (route) => ({ "--spar-rail": accent(route), "--spar-tint": tintOf(route) });
 			const frame = (v, children, extra = {}) => {
 				const brand =
@@ -1453,15 +1520,35 @@ window.__ModuleLoader__.load({
 .spp .pchip[data-brand="gemini"]{border-color:rgba(79,140,255,.5);box-shadow:0 0 8px rgba(49,134,255,.22)}
 .spp .pchip svg{display:block;flex:none}
 
-.spp .panel{width:432px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
-	border:1px solid rgba(255,255,255,.11);
+.spp .panel{width:440px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
+	border:1px solid rgba(255,255,255,.12);
 	background:
-		radial-gradient(circle at 12% 0%,color-mix(in srgb,var(--p-opp,#6b7280) 13%,transparent),transparent 42%),
-		radial-gradient(circle at 88% 0%,color-mix(in srgb,var(--p-jud,#e5b83a) 11%,transparent),transparent 42%),
-		rgba(8,8,10,.97);
-	backdrop-filter:blur(18px);
-	box-shadow:0 28px 80px rgba(0,0,0,.68),inset 0 1px 0 rgba(255,255,255,.06);
+		radial-gradient(ellipse 68% 72% at 0% 26%,color-mix(in srgb,var(--p-left,#6b7280) 20%,transparent),transparent 72%),
+		radial-gradient(ellipse 68% 72% at 100% 34%,color-mix(in srgb,var(--p-opp,#6b7280) 20%,transparent),transparent 72%),
+		radial-gradient(ellipse 56% 48% at 12% 94%,color-mix(in srgb,var(--p-left,#6b7280) 13%,transparent),transparent 70%),
+		radial-gradient(ellipse 56% 48% at 88% 94%,color-mix(in srgb,var(--p-opp,#6b7280) 13%,transparent),transparent 70%),
+		#050507;
+	backdrop-filter:blur(20px);
+	box-shadow:0 28px 80px rgba(0,0,0,.82),inset 0 1px 0 rgba(255,255,255,.07);
 	animation:spp-in .24s cubic-bezier(.2,.9,.25,1) both}
+.spp .panel[data-left-brand="gemini"]{
+	background:
+		radial-gradient(ellipse 64% 52% at 0% 14%,rgba(49,134,255,.22),transparent 68%),
+		radial-gradient(ellipse 54% 46% at 0% 56%,rgba(8,185,98,.13),transparent 68%),
+		radial-gradient(ellipse 52% 44% at 14% 96%,rgba(250,188,18,.11),rgba(249,69,67,.08) 46%,transparent 72%),
+		radial-gradient(ellipse 68% 74% at 100% 34%,color-mix(in srgb,var(--p-opp,#6b7280) 22%,transparent),transparent 72%),
+		radial-gradient(ellipse 56% 48% at 88% 94%,color-mix(in srgb,var(--p-opp,#6b7280) 14%,transparent),transparent 70%),
+		#050507;
+}
+.spp .panel[data-opp-brand="gemini"]{
+	background:
+		radial-gradient(ellipse 68% 74% at 0% 34%,color-mix(in srgb,var(--p-left,#6b7280) 22%,transparent),transparent 72%),
+		radial-gradient(ellipse 56% 48% at 12% 94%,color-mix(in srgb,var(--p-left,#6b7280) 14%,transparent),transparent 70%),
+		radial-gradient(ellipse 64% 52% at 100% 14%,rgba(49,134,255,.22),transparent 68%),
+		radial-gradient(ellipse 54% 46% at 100% 56%,rgba(8,185,98,.13),transparent 68%),
+		radial-gradient(ellipse 52% 44% at 86% 96%,rgba(250,188,18,.11),rgba(249,69,67,.08) 46%,transparent 72%),
+		#050507;
+}
 .spp .panel.closing{animation:spp-out .16s ease-in forwards}
 .spp .inner{display:flex;flex-direction:column;max-height:min(82vh,740px)}
 
@@ -1469,78 +1556,86 @@ window.__ModuleLoader__.load({
 .spp .top-title{display:flex;align-items:center;gap:7px}
 .spp .top h1{font-size:14px;font-weight:650;margin:0;letter-spacing:.01em}
 .spp .top-badge{font-size:10px;padding:1px 7px;border-radius:999px;color:var(--p-dim);
-	background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.07);font-variant-numeric:tabular-nums}
-.spp .top-badge[data-on="1"]{color:var(--p-accent2);background:rgba(52,211,153,.11);border-color:rgba(52,211,153,.28)}
+	background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.1);font-variant-numeric:tabular-nums}
+.spp .top-badge[data-on="1"]{color:var(--p-accent2);background:rgba(52,211,153,.11);border-color:rgba(52,211,153,.3)}
 .spp .top small{display:block;font-size:10.5px;color:var(--p-dim);margin-top:1px}
 .spp .x{margin-left:auto;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:var(--p-dim);font-size:16px;line-height:1}
-.spp .x:hover{color:var(--p-fg);background:rgba(255,255,255,.07)}
+.spp .x:hover{color:var(--p-fg);background:rgba(255,255,255,.08)}
 
-/* arena matchup: full brand-tinted fighter cards with circular SVG avatars */
+/* arena matchup: clean fighter cards without side stripes */
 .spp .match{margin:12px 14px 0;display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:8px}
-.spp .side{position:relative;min-width:0;display:flex;align-items:center;gap:9px;padding:9px 10px 9px 12px;border-radius:14px;
-	background:linear-gradient(135deg,color-mix(in srgb,var(--rail,#6b7280) 13%,transparent),transparent 70%),var(--p-card);
-	border:1px solid color-mix(in srgb,var(--rail,#6b7280) 30%,var(--p-line));overflow:hidden}
+.spp .side{position:relative;min-width:0;display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:14px;
+	background:linear-gradient(135deg,color-mix(in srgb,var(--rail,#6b7280) 14%,transparent),rgba(0,0,0,.38) 72%),rgba(0,0,0,.42);
+	border:1px solid color-mix(in srgb,var(--rail,#6b7280) 34%,rgba(255,255,255,.09));overflow:hidden;
+	transition:border-color .15s,background .15s}
 .spp .side[data-brand="gemini"]{
-	border-color:rgba(79,140,255,.36);
+	border-color:rgba(79,140,255,.38);
 	background:
-		radial-gradient(circle at 0% 0%,rgba(49,134,255,.16),transparent 52%),
-		radial-gradient(circle at 60% 0%,rgba(8,185,98,.09),transparent 52%),
-		radial-gradient(circle at 100% 100%,rgba(249,69,67,.10),transparent 52%),
-		var(--p-card);
+		radial-gradient(circle at 0% 0%,rgba(49,134,255,.18),transparent 54%),
+		radial-gradient(circle at 60% 0%,rgba(8,185,98,.10),transparent 54%),
+		radial-gradient(circle at 100% 100%,rgba(249,69,67,.10),transparent 54%),
+		rgba(0,0,0,.44);
 }
-.spp .side::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--rail-grad,var(--rail,#6b7280))}
-.spp .side-av{width:32px;height:32px;border-radius:50%;flex:none;display:grid;place-items:center;
-	background:color-mix(in srgb,var(--rail,#6b7280) 16%,rgba(14,14,18,.94));
-	border:1px solid color-mix(in srgb,var(--rail,#6b7280) 42%,rgba(255,255,255,.1));
+.spp .side-av{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;
+	background:color-mix(in srgb,var(--rail,#6b7280) 18%,rgba(8,8,10,.92));
+	border:1px solid color-mix(in srgb,var(--rail,#6b7280) 45%,rgba(255,255,255,.12));
 	font-size:13px;font-weight:700;color:var(--p-fg)}
-.spp .side[data-brand="gemini"] .side-av{border-color:rgba(79,140,255,.5);box-shadow:0 0 12px rgba(49,134,255,.18)}
+.spp .side[data-brand="gemini"] .side-av{border-color:rgba(79,140,255,.52);box-shadow:0 0 14px rgba(49,134,255,.22)}
 .spp .side-txt{min-width:0;flex:1}
-.spp .side i{display:flex;align-items:center;justify-content:space-between;gap:4px;font-style:normal;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--p-dim)}
-.spp .side b{display:block;font-size:11.5px;font-weight:600;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .side i{display:block;font-style:normal;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--p-dim)}
+.spp .side b{display:block;font-size:12px;font-weight:650;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spp .side em{display:block;font-style:normal;font-size:10px;color:var(--p-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spp .vs{align-self:center;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
-	font-size:10px;font-weight:650;color:var(--p-dim);background:rgba(255,255,255,.045);border:1px solid var(--p-line)}
-.spp .vs[data-clash="1"]{color:var(--p-bad);border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.12)}
-.spp .duel-bar{margin:7px 14px 0;padding:5px 10px;border-radius:10px;display:flex;align-items:center;gap:7px;
-	font-size:10.5px;color:var(--p-dim);background:rgba(255,255,255,.03);border:1px solid var(--p-line)}
-.spp .duel-bar b{color:var(--p-fg);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .vs{align-self:center;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+	font-size:10px;font-weight:700;color:var(--p-fg);
+	background:linear-gradient(135deg,color-mix(in srgb,var(--p-left,#6b7280) 22%,rgba(0,0,0,.75)),color-mix(in srgb,var(--p-opp,#6b7280) 22%,rgba(0,0,0,.75)));
+	border:1px solid rgba(255,255,255,.14)}
+.spp .vs[data-clash="1"]{color:var(--p-bad);border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.15)}
 
-.spp .tabs{display:flex;gap:2px;margin:12px 14px 0;padding:3px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--p-line)}
+.spp .arbiter-bar{margin:8px 14px 0;display:flex;flex-wrap:wrap;gap:6px}
+.spp .arb-chip{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:11px;
+	background:rgba(0,0,0,.44);border:1px solid color-mix(in srgb,var(--atint,#e5b83a) 26%,rgba(255,255,255,.09));
+	font-size:11px;color:var(--p-dim)}
+.spp .arb-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .arb-chip b{color:var(--p-fg);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spp .arb-chip small{margin-left:auto;font-size:9.5px;color:var(--p-faint);white-space:nowrap}
+
+.spp .tabs{display:flex;gap:2px;margin:10px 14px 0;padding:3px;border-radius:12px;background:rgba(0,0,0,.44);border:1px solid rgba(255,255,255,.09)}
 .spp .tabs button{flex:1;padding:6px 0;border-radius:9px;font-size:11.5px;color:var(--p-dim);transition:background .15s,color .15s}
 .spp .tabs button:hover{color:var(--p-fg)}
-.spp .tabs button[aria-selected="true"]{background:rgba(255,255,255,.12);color:var(--p-fg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.spp .tabs button[aria-selected="true"]{background:rgba(255,255,255,.11);color:var(--p-fg);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
 .spp .tabs sup{font-size:9px;margin-left:3px;color:var(--p-faint)}
 
 .spp .body{flex:1;min-height:0;overflow:auto;padding:12px 14px 4px;animation:spp-tab .18s ease both}
 .spp .body::-webkit-scrollbar{width:6px}
 .spp .body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px}
-.spp .group{padding:11px 12px 4px;margin-bottom:10px;border-radius:14px;background:var(--p-card);border:1px solid var(--p-line)}
+.spp .group{padding:11px 12px 4px;margin-bottom:10px;border-radius:14px;background:rgba(0,0,0,.44);border:1px solid rgba(255,255,255,.09)}
 .spp .group > h2{margin:0 0 9px;font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--p-dim)}
 .spp .row{margin-bottom:10px}
 .spp .row label,.spp .row .lab{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:#c4c4c4;margin-bottom:5px}
 .spp .row label small,.spp .row .lab small{font-size:10px;color:var(--p-faint)}
 .spp .role-head{display:inline-flex;align-items:center;gap:6px;min-width:0}
-.spp .role-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 7px 2px 3px;border-radius:999px;
-	font-size:10px;color:var(--p-fg);background:color-mix(in srgb,var(--rtint,#6b7280) 14%,rgba(255,255,255,.04));
-	border:1px solid color-mix(in srgb,var(--rtint,#6b7280) 32%,var(--p-line));max-width:170px}
+.spp .role-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 3px;border-radius:999px;
+	font-size:10px;color:var(--p-fg);background:color-mix(in srgb,var(--rtint,#6b7280) 14%,rgba(0,0,0,.5));
+	border:1px solid color-mix(in srgb,var(--rtint,#6b7280) 34%,rgba(255,255,255,.1));max-width:175px}
 .spp .role-pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spp select,.spp input[type=number]{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--p-line);
-	background:rgba(0,0,0,.28);outline:none;font-size:12px;transition:border-color .15s,background .15s}
-.spp select:hover,.spp input:hover{border-color:rgba(255,255,255,.2)}
-.spp select:focus,.spp input:focus{border-color:color-mix(in srgb,var(--rtint,#fff) 60%,rgba(255,255,255,.35));background:rgba(255,255,255,.05)}
-.spp option{background:#111}.spp option:disabled{color:#666}
+.spp select,.spp input[type=number]{width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.1);
+	background:rgba(0,0,0,.52);outline:none;font-size:12px;transition:border-color .15s,background .15s}
+.spp select{appearance:none;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.spp select:hover,.spp input:hover{border-color:rgba(255,255,255,.22)}
+.spp select:focus,.spp input:focus{border-color:color-mix(in srgb,var(--rtint,#fff) 60%,rgba(255,255,255,.35));background-color:rgba(0,0,0,.72)}
+.spp option{background:#0b0b0e}.spp option:disabled{color:#666}
 .spp .seg{display:flex;gap:4px}
-.spp .seg button{flex:1;padding:6px 4px;border-radius:9px;border:1px solid var(--p-line);background:rgba(0,0,0,.22);
+.spp .seg button{flex:1;padding:6px 4px;border-radius:9px;border:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.4);
 	font-size:11px;color:var(--p-dim);transition:.15s;white-space:nowrap}
-.spp .seg button:hover{color:var(--p-fg);border-color:rgba(255,255,255,.2)}
+.spp .seg button:hover{color:var(--p-fg);border-color:rgba(255,255,255,.22)}
 .spp .seg button[data-on="1"]{color:var(--p-fg);border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.12)}
 .spp .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
 .spp .deb{display:flex;flex-direction:column;gap:5px;padding:9px 11px;margin-bottom:7px;border-radius:13px;cursor:pointer;
 	text-align:left;width:100%;
-	background:linear-gradient(135deg,color-mix(in srgb,var(--d-right,#6b7280) 8%,transparent),transparent 65%),var(--p-card);
-	border:1px solid color-mix(in srgb,var(--d-right,#6b7280) 20%,var(--p-line));transition:border-color .15s,background .15s}
-.spp .deb:hover{border-color:color-mix(in srgb,var(--d-right,#fff) 45%,var(--p-line))}
+	background:linear-gradient(125deg,color-mix(in srgb,var(--d-left,#6b7280) 10%,transparent),rgba(0,0,0,.46) 48%,color-mix(in srgb,var(--d-right,#6b7280) 10%,transparent)),rgba(0,0,0,.44);
+	border:1px solid color-mix(in srgb,var(--d-right,#6b7280) 22%,rgba(255,255,255,.09));transition:border-color .15s,background .15s}
+.spp .deb:hover{border-color:color-mix(in srgb,var(--d-right,#fff) 45%,rgba(255,255,255,.16))}
 .spp .deb-top{display:flex;align-items:center;gap:6px;width:100%}
 .spp .deb b{font-variant-numeric:tabular-nums;color:var(--p-accent);font-size:11.5px}
 .spp .deb-icons{display:inline-flex;align-items:center;gap:3px}
@@ -1552,7 +1647,7 @@ window.__ModuleLoader__.load({
 .spp .deb-sub span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spp .empty{padding:22px 0;text-align:center;font-size:11.5px;color:var(--p-dim)}
 
-.spp .foot{display:flex;align-items:center;gap:8px;padding:11px 14px 13px;border-top:1px solid var(--p-line);background:rgba(0,0,0,.22)}
+.spp .foot{display:flex;align-items:center;gap:8px;padding:11px 14px 13px;border-top:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.48)}
 .spp .save{position:relative;padding:7px 16px;border-radius:11px;font-size:12px;font-weight:650;color:#000;
 	background:#f0f0f0;transition:opacity .15s,transform .15s}
 .spp .save:hover:not([disabled]){transform:translateY(-1px)}
@@ -1578,11 +1673,14 @@ window.__ModuleLoader__.load({
 			if (value === "self") return "как в профиле · я сам (моя модель)";
 			const models = catalog?.models ?? [];
 			const known = models.some((entry) => entry.label === value);
-			return `как в профиле · ${value}${known ? "" : " · нет в каталоге"}`;
+			const shown = displayModel(value, catalog);
+			const prov = displayProvider(value, catalog);
+			const full = prov && shown !== value ? `${shown} · ${prov}` : shown;
+			return `как в профиле · ${full}${known ? "" : " · нет в каталоге"}`;
 		}
 
 		/** One choice the panel can leave alone: empty value means "profile default". */
-		function modelOptions(models, allowEmpty, emptyLabel, current, blocked = {}) {
+		function modelOptions(models, allowEmpty, emptyLabel, current, blocked = {}, catalog = sharedCatalog) {
 			const rows = [];
 			if (allowEmpty) rows.push(jsx("option", { value: "", children: emptyLabel, key: "auto" }));
 			// A value the catalog does not know still exists in settings.json. Without
@@ -1596,16 +1694,31 @@ window.__ModuleLoader__.load({
 				// A model taken by another role stays visible but cannot be picked, so the
 				// panel never lets the judge double as a debater.
 				const why = entry.label !== current ? blocked[entry.label] : undefined;
+				const prov = entry.providerName || displayProvider(entry.label, catalog) || entry.provider;
+				const base = entry.name && entry.name !== entry.model ? `${entry.name} · ${prov}` : `${entry.model} · ${prov}`;
 				rows.push(
 					jsx("option", {
 						value: entry.label,
 						disabled: why !== undefined,
-						children: why !== undefined ? `${entry.label} · ${why}` : entry.chat ? entry.label : `${entry.label} · не чат`,
+						children: why !== undefined ? `${base} · ${why}` : entry.chat ? base : `${base} · не чат`,
 						key: entry.label,
 					}),
 				);
 			}
 			return rows;
+		}
+
+		function readActiveChatInfo() {
+			if (typeof document === "undefined" || typeof document.querySelector !== "function") return { route: "", name: "" };
+			const node =
+				document.querySelector('[data-composer-card] [data-provider-id][data-model-id]') ??
+				document.querySelector('[data-provider-id][data-model-id]');
+			if (!node || typeof node.getAttribute !== "function") return { route: "", name: "" };
+			const provider = node.getAttribute("data-provider-id") ?? "";
+			const model = node.getAttribute("data-model-id") ?? "";
+			const route = provider && model ? `${provider}/${model}` : "";
+			const name = typeof node.textContent === "string" ? node.textContent.trim() : "";
+			return { route, name };
 		}
 
 		/**
@@ -1633,6 +1746,7 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = React.useState(false);
 			const [tab, setTab] = React.useState("models");
 			const [copiedId, setCopiedId] = React.useState("");
+			const [chatModel, setChatModel] = React.useState("");
 			// setState after the panel closed (or unmounted) is a leak and a warning.
 			const alive = React.useRef(true);
 			React.useEffect(() => {
@@ -1647,8 +1761,11 @@ window.__ModuleLoader__.load({
 					.then((response) => (response.ok ? response.json() : null))
 					.then((value) => {
 						if (!alive.current) return;
-						if (value !== null) setCatalog({ providers: value.providers ?? [], models: value.models ?? [] });
-						else {
+						if (value !== null) {
+							const nextCat = { providers: value.providers ?? [], models: value.models ?? [] };
+							setCatalog(nextCat);
+							publishCatalog(nextCat);
+						} else {
 							setBad(true);
 							setNote("каталог моделей не отвечает");
 						}
@@ -1690,6 +1807,25 @@ window.__ModuleLoader__.load({
 			React.useEffect(() => {
 				if (open) load();
 			}, [open]);
+
+			// Track the model currently selected in the open chat's composer.
+			React.useEffect(() => {
+				const sync = () => {
+					if (!alive.current) return;
+					const next = readActiveChatInfo().route;
+					if (next !== "") setChatModel((prev) => (prev === next ? prev : next));
+				};
+				sync();
+				if (typeof MutationObserver === "undefined" || typeof document === "undefined" || !document.body) return undefined;
+				const observer = new MutationObserver(sync);
+				observer.observe(document.body, {
+					childList: true,
+					subtree: true,
+					attributes: true,
+					attributeFilter: ["data-provider-id", "data-model-id"],
+				});
+				return () => observer.disconnect();
+			}, []);
 
 			const set = (key, value) => {
 				setNote("");
@@ -1773,8 +1909,12 @@ window.__ModuleLoader__.load({
 			if (!selfJudgeOn && pickedChallenger !== "") judgeBlock[pickedChallenger] = "вторая сторона";
 
 			const openDebates = debates.filter((row) => row.closed !== true).length;
+			const domChat = readActiveChatInfo();
+			const activeLeft = chatModel || domChat.route || debates.find((row) => typeof row.leftRoute === "string" && row.leftRoute !== "")?.leftRoute || "";
+			const leftDomName = activeLeft && activeLeft === domChat.route ? domChat.name : "";
+			const leftBrand = brandOf(activeLeft);
 			const oppBrand = brandOf(pickedOpponent);
-			const judBrand = pickedJudge === "self" ? "" : brandOf(pickedJudge);
+			const leftTint = tintOf(activeLeft);
 			const oppTint = tintOf(pickedOpponent);
 			const judTint = pickedJudge === "self" ? "#e5b83a" : tintOf(pickedJudge);
 			const chipOf = (value, fallback = "?", size = 12) => {
@@ -1819,6 +1959,9 @@ window.__ModuleLoader__.load({
 					],
 				});
 
+			const pillLeft = activeLeft || pickedOpponent;
+			const pillRight = activeLeft ? pickedOpponent : pickedJudge;
+
 			const pill = jsxs("button", {
 				type: "button",
 				className: "pill",
@@ -1826,7 +1969,7 @@ window.__ModuleLoader__.load({
 				"aria-label": open ? "Закрыть настройки спарринга" : "Открыть настройки спарринга",
 				"aria-expanded": open ? "true" : "false",
 				onClick: () => (open ? requestClose() : setOpen(true)),
-				title: open ? "свернуть" : `${pickedOpponent || "оппонент"} vs ${pickedJudge || "судья"}`,
+				title: open ? "свернуть" : `${activeLeft || "ваш чат"} vs ${pickedOpponent || "оппонент"}`,
 				children: [
 					jsx("span", { className: "pill-mark", "aria-hidden": "true", children: sparRingSvg() }),
 					jsxs("span", {
@@ -1842,21 +1985,21 @@ window.__ModuleLoader__.load({
 							}),
 						],
 					}),
-					pickedOpponent !== "" || pickedJudge !== ""
+					pillLeft !== "" || pillRight !== ""
 						? jsxs("span", {
 								className: "pill-pair",
 								"aria-hidden": "true",
 								children: [
-									pillIcon(pickedOpponent, "B"),
+									pillIcon(pillLeft, "A"),
 									jsx("span", { className: "pill-vs", children: "×" }),
-									pillIcon(pickedJudge, "⚖"),
+									pillIcon(pillRight, "B"),
 								],
 							})
 						: null,
 				],
 			});
 
-			if (!open) return jsx("div", { className: "spp", style: { "--p-opp": oppTint, "--p-jud": judTint }, children: pill });
+			if (!open) return jsx("div", { className: "spp", style: { "--p-left": leftTint, "--p-opp": oppTint, "--p-jud": judTint }, children: pill });
 
 			const field = (id, label, hint, control) =>
 				jsxs("div", {
@@ -1865,7 +2008,7 @@ window.__ModuleLoader__.load({
 				});
 
 			const roleField = (id, label, hint, picked, control) => {
-				const shortName = picked === "self" ? "я сам" : picked ? modelOf(picked) : "не выбран";
+				const shortName = picked === "self" ? "я сам" : picked ? displayModel(picked, catalog) : "не выбран";
 				const rTint = picked === "self" ? "#e5b83a" : tintOf(picked);
 				return jsxs("div", {
 					className: "row",
@@ -1958,7 +2101,7 @@ window.__ModuleLoader__.load({
 								id: "spp-f1",
 								value: draft.opponent ?? "",
 								onChange: (event) => set("opponent", event.target.value),
-								children: modelOptions(models, true, inheritLabel("оппонент", profile.opponent, catalog), draft.opponent ?? "", debaterBlock),
+								children: modelOptions(models, true, inheritLabel("оппонент", profile.opponent, catalog), draft.opponent ?? "", debaterBlock, catalog),
 							}),
 						),
 						roleField(
@@ -1970,7 +2113,7 @@ window.__ModuleLoader__.load({
 								id: "spp-f3",
 								value: draft.challenger ?? "",
 								onChange: (event) => set("challenger", event.target.value),
-								children: modelOptions(models, true, inheritLabel("соперник", profile.challenger, catalog), draft.challenger ?? "", debaterBlock),
+								children: modelOptions(models, true, inheritLabel("соперник", profile.challenger, catalog), draft.challenger ?? "", debaterBlock, catalog),
 							}),
 						),
 						roleField(
@@ -1985,7 +2128,7 @@ window.__ModuleLoader__.load({
 								children: [
 									jsx("option", { value: "", children: inheritLabel("судья", profile.judge, catalog), key: "auto" }),
 									jsx("option", { value: "self", children: "я сам (моя модель)", key: "self" }),
-									...modelOptions(models, false, "", draft.judge ?? "", judgeBlock),
+									...modelOptions(models, false, "", draft.judge ?? "", judgeBlock, catalog),
 								],
 							}),
 						),
@@ -2118,8 +2261,8 @@ window.__ModuleLoader__.load({
 				debates.length === 0
 					? jsx("div", { className: "empty", children: "Споров пока нет. Они появятся после первого вызова spar." })
 					: debates.map((row) => {
-							const leftName = row.leftRoute ? modelOf(row.leftRoute) : "A";
-							const rightName = row.rightRoute ? modelOf(row.rightRoute) : "B";
+							const leftName = row.leftRoute ? displayModel(row.leftRoute, catalog) : "A";
+							const rightName = row.rightRoute ? displayModel(row.rightRoute, catalog) : "B";
 							const statusLabel = row.verdict
 								? "⚖ приговор"
 								: row.closed
@@ -2131,7 +2274,7 @@ window.__ModuleLoader__.load({
 								key: row.id,
 								"data-v": row.verdict ? "1" : "0",
 								"data-open": !row.closed && !row.verdict ? "1" : "0",
-								style: { "--d-right": tintOf(row.rightRoute ?? "") },
+								style: { "--d-left": tintOf(row.leftRoute ?? ""), "--d-right": tintOf(row.rightRoute ?? "") },
 								title: `Нажми, чтобы скопировать ${row.id}`,
 								onClick: () => {
 									try {
@@ -2184,26 +2327,26 @@ window.__ModuleLoader__.load({
 				["params", "Параметры"],
 				["debates", "Споры"],
 			];
-			const sideView = (role, value) => {
+			const sideView = (role, value, emptyLabel = "не выбран", emptySub = "", domName = "") => {
 				const isSelf = value === "self";
-				const text = isSelf ? "я сам" : String(value || "не выбран");
-				const slash = text.lastIndexOf("/");
+				const text = isSelf ? "я сам" : String(value || emptyLabel);
+				const shown = isSelf ? "я сам" : value ? displayModel(value, catalog, domName) : emptyLabel;
+				const prov = isSelf ? "модель, что вызвала spar" : value ? displayProvider(value, catalog) : emptySub;
 				const brand = isSelf ? "" : brandOf(value);
 				const rail = isSelf ? "#e5b83a" : tintOf(value);
-				const railGrad = isSelf ? "linear-gradient(180deg,#f2cc5a,#b8860b)" : accent(value);
 				const icon = brand !== "" ? brandSvg(brand, 19) : isSelf ? "⚖" : "◈";
 				return jsxs("div", {
 					className: "side",
 					"data-brand": brand || undefined,
-					style: { "--rail": rail, "--rail-grad": railGrad },
+					style: { "--rail": rail },
 					children: [
 						jsx("span", { className: "side-av", "aria-hidden": "true", children: icon }),
 						jsxs("div", {
 							className: "side-txt",
 							children: [
 								jsx("i", { children: role }),
-								jsx("b", { title: text, children: slash >= 0 ? text.slice(slash + 1) : text }),
-								jsx("em", { children: slash >= 0 ? text.slice(0, slash) : isSelf ? "модель, что вызвала spar" : "" }),
+								jsx("b", { title: text, children: shown }),
+								jsx("em", { children: prov }),
 							],
 						}),
 					],
@@ -2214,10 +2357,12 @@ window.__ModuleLoader__.load({
 
 			return jsx("div", {
 				className: "spp",
-				style: { "--p-opp": oppTint, "--p-jud": judTint },
+				style: { "--p-left": leftTint, "--p-opp": oppTint, "--p-jud": judTint },
 				children: [jsx("div", {
 					key: "panel",
 					className: "panel" + (closing ? " closing" : ""),
+					"data-left-brand": leftBrand || undefined,
+					"data-opp-brand": leftBrand !== "gemini" && oppBrand === "gemini" ? "gemini" : undefined,
 					role: "dialog",
 					"aria-label": "Настройки спарринга",
 					children: jsxs("div", {
@@ -2267,24 +2412,42 @@ window.__ModuleLoader__.load({
 							jsxs("div", {
 								className: "match",
 								children: [
-									sideView("оппонент", pickedOpponent),
+									sideView(chatModel || domChat.route ? "ваш чат · A" : "сторона · A", activeLeft, "вызывающий агент", "модель в чате", leftDomName),
 									jsx("span", { className: "vs", "data-clash": clash ? "1" : "0", "aria-hidden": "true", children: clash ? "!" : "vs" }),
-									sideView("судья", pickedJudge),
+									sideView("оппонент · B", pickedOpponent),
 								],
 							}),
-							pickedChallenger !== ""
-								? jsxs("div", {
-										className: "duel-bar",
+							jsxs("div", {
+								className: "arbiter-bar",
+								children: [
+									jsxs("div", {
+										className: "arb-chip",
+										style: { "--atint": judTint },
+										title: pickedJudge || "судья не выбран",
 										children: [
-											jsx("span", { children: "дуэль" }),
-											chipOf(pickedOpponent, "A", 11),
-											jsx("b", { children: modelOf(pickedOpponent) || "—" }),
-											jsx("span", { children: "×" }),
-											chipOf(pickedChallenger, "B", 11),
-											jsx("b", { children: modelOf(pickedChallenger) || "—" }),
+											chipOf(pickedJudge, "⚖", 11),
+											jsx("span", { children: "судья" }),
+											jsx("b", { children: pickedJudge === "self" ? "я сам" : pickedJudge ? displayModel(pickedJudge, catalog) : "не выбран" }),
+											pickedJudge && pickedJudge !== "self" && displayProvider(pickedJudge, catalog)
+												? jsx("small", { children: displayProvider(pickedJudge, catalog) })
+												: null,
 										],
-									})
-								: null,
+									}),
+									pickedChallenger !== ""
+										? jsxs("div", {
+												className: "arb-chip",
+												style: { "--atint": tintOf(pickedChallenger) },
+												title: `${pickedOpponent} × ${pickedChallenger}`,
+												children: [
+													chipOf(pickedChallenger, "⚔", 11),
+													jsx("span", { children: "дуэль" }),
+													jsx("b", { children: displayModel(pickedChallenger, catalog) }),
+													displayProvider(pickedChallenger, catalog) ? jsx("small", { children: displayProvider(pickedChallenger, catalog) }) : null,
+												],
+											})
+										: null,
+								],
+							}),
 							clash
 								? jsx("div", {
 										className: "warn",

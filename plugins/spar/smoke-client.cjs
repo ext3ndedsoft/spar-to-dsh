@@ -512,10 +512,10 @@ for (const [label, props, expect] of cases) {
       if (idx === 3) {
         return [
           {
-            providers: [{ id: "coarena-pool", name: "Coarena" }, { id: "antigravity", name: "Antigravity" }],
+            providers: [{ id: "coarena-pool", name: "Coarena Pool" }, { id: "antigravity", name: "Antigravity" }],
             models: [
-              { provider: "coarena-pool", model: "deepseek-v4-1-flash-1017", label: "coarena-pool/deepseek-v4-1-flash-1017", chat: true },
-              { provider: "antigravity", model: "gemini-4-neon", label: "antigravity/gemini-4-neon", chat: true },
+              { provider: "coarena-pool", providerName: "Coarena Pool", model: "deepseek-v4-1-flash-1017", name: "deepseek-v4-1-flash-1017", label: "coarena-pool/deepseek-v4-1-flash-1017", chat: true },
+              { provider: "antigravity", providerName: "Antigravity", model: "gemini-4-neon", name: "Gemini 4 Neon", label: "antigravity/gemini-4-neon", chat: true },
             ],
           },
           () => {},
@@ -577,8 +577,8 @@ for (const [label, props, expect] of cases) {
 
   const openModels = seedPanel(true, "models");
   const openText = strings(openModels).join(" | ");
-  if (!openText.includes("Спарринг") || !openText.includes("1 активн.") || !openText.includes("deepseek-v4-1-flash-1017") || !openText.includes("gemini-4-neon")) {
-    throw new Error(`open panel missing expected arena matchup: "${openText.slice(0, 220)}"`);
+  if (!openText.includes("Спарринг") || !openText.includes("1 активн.") || !openText.includes("deepseek-v4-1-flash-1017") || !openText.includes("Gemini 4 Neon") || !openText.includes("Antigravity")) {
+    throw new Error(`open panel missing expected arena matchup/display names: "${openText.slice(0, 260)}"`);
   }
   if (countAttr(openModels, "data-brand") < 4) {
     throw new Error("open panel missing brand-styled chips/arena sides");
@@ -591,6 +591,22 @@ for (const [label, props, expect] of cases) {
     throw new Error(`debates tab missing expected row details: "${debatesText}"`);
   }
   console.log("redesigned panel (debates tab): ok");
+
+  // Live active chat model detection from composer DOM trigger (including display textContent)
+  const origQuerySelector = global.document.querySelector;
+  global.document.querySelector = () => ({
+    getAttribute: (name) => (name === "data-provider-id" ? "anthropic" : name === "data-model-id" ? "claude-sonnet-4-6" : null),
+    textContent: "Claude Sonnet 4.6",
+  });
+  const liveChatPanel = seedPanel(true, "models");
+  global.document.querySelector = origQuerySelector;
+  const liveChatText = strings(liveChatPanel).join(" | ");
+  if (!liveChatText.includes("ваш чат · A") || !liveChatText.includes("Claude Sonnet 4.6") || !liveChatText.includes("оппонент · B")) {
+    throw new Error(`arena did not detect live chat display name: "${liveChatText.slice(0, 240)}"`);
+  }
+  const panelCss = injectedStyles.find((style) => style.id === "dsh-spar-panel-style").textContent;
+  if (panelCss.includes(".spp .side::before")) throw new Error("panel CSS should not render side stripes");
+  console.log("arena live chat model + display names: ok");
 }
 
 console.log("all card states render");

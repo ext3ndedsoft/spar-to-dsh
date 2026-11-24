@@ -59,9 +59,9 @@
 ## Как это выглядит
 
 <p align="center">
-  <img src="assets/panel-spar.png?v=4" alt="Панель настроек spar" width="360">
+  <img src="assets/panel-spar.png?v=5" alt="Панель настроек spar" width="360">
   &nbsp;&nbsp;
-  <img src="assets/card-spar.png?v=4" alt="Карточки спора и приговора в чате" width="360">
+  <img src="assets/card-spar.png?v=5" alt="Карточки спора и приговора в чате" width="360">
 </p>
 
 ```text
