@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/banner.en.svg?v=2" alt="spar — a second model that argues back" width="100%">
+  <img src="assets/banner.en.png?v=3" alt="spar — a second model that argues back" width="100%">
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-6d7cff"></a>
-  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-3fbf7f">
-  <img alt="dependencies" src="https://img.shields.io/badge/dependencies-none-brightgreen">
-  <img alt="profile" src="https://img.shields.io/badge/dsh-web%20profile-ff9b7a">
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/LICENSE-MIT-0a0a0a?style=for-the-badge&labelColor=ffffff"></a>
+  <img alt="node" src="https://img.shields.io/badge/NODE-%E2%89%A520-ffffff?style=for-the-badge&labelColor=0a0a0a&logo=nodedotjs&logoColor=white">
+  <img alt="dependencies" src="https://img.shields.io/badge/DEPENDENCIES-NONE-0a0a0a?style=for-the-badge&labelColor=ffffff">
+  <img alt="profile" src="https://img.shields.io/badge/DSH-WEB%20PROFILE-ffffff?style=for-the-badge&labelColor=0a0a0a">
 </p>
 
 <p align="center">
@@ -44,6 +44,12 @@ picks the opponent, the judge and the third model from the harness catalog, plus
 language, project access, readings per turn, budgets and per-role temperature.
 
 ## How it looks
+
+<p align="center">
+  <img src="assets/panel-spar.png?v=3" alt="spar settings overlay" width="360">
+  &nbsp;&nbsp;
+  <img src="assets/card-spar.png?v=3" alt="spar debate and verdict cards" width="360">
+</p>
 
 ```text
 agent ──── open "<topic>" ────►  opponent reads the project (read · grep · glob · git)

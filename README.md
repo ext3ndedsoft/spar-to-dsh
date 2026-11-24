@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/banner.svg?v=2" alt="spar — вторая модель, которая возражает" width="100%">
+  <img src="assets/banner.png?v=3" alt="spar — вторая модель, которая возражает" width="100%">
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="лицензия" src="https://img.shields.io/badge/license-MIT-6d7cff"></a>
-  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A520-3fbf7f">
-  <img alt="зависимости" src="https://img.shields.io/badge/dependencies-none-brightgreen">
-  <img alt="профиль" src="https://img.shields.io/badge/dsh-web%20profile-ff9b7a">
+  <a href="LICENSE"><img alt="лицензия" src="https://img.shields.io/badge/LICENSE-MIT-0a0a0a?style=for-the-badge&labelColor=ffffff"></a>
+  <img alt="node" src="https://img.shields.io/badge/NODE-%E2%89%A520-ffffff?style=for-the-badge&labelColor=0a0a0a&logo=nodedotjs&logoColor=white">
+  <img alt="зависимости" src="https://img.shields.io/badge/DEPENDENCIES-NONE-0a0a0a?style=for-the-badge&labelColor=ffffff">
+  <img alt="профиль" src="https://img.shields.io/badge/DSH-WEB%20PROFILE-ffffff?style=for-the-badge&labelColor=0a0a0a">
 </p>
 
 <p align="center">
@@ -57,6 +57,12 @@
 профиля. Ничего не «работает по умолчанию» за вашей спиной.
 
 ## Как это выглядит
+
+<p align="center">
+  <img src="assets/panel-spar.png?v=3" alt="Панель настроек spar" width="360">
+  &nbsp;&nbsp;
+  <img src="assets/card-spar.png?v=3" alt="Карточки спора и приговора в чате" width="360">
+</p>
 
 ```text
 агент ──── open "<тема>" ────►  оппонент читает проект (read · grep · glob · git)
