@@ -437,6 +437,61 @@ for (const [label, props, expect] of cases) {
   console.log("sync settle with stale live: ok — full text, no пишет…");
 }
 
+// Verify opening card (`opening: true`) renders A's "A начинает" + "старт" card above B's card.
+{
+  let callIndex = 0;
+  const origUseState = React.useState;
+  React.useState = (initial) => {
+    callIndex += 1;
+    if (callIndex === 2) {
+      return [
+        {
+          known: true,
+          done: true,
+          opening: true,
+          id: "d72",
+          role: "right",
+          phase: "reply",
+          route: "coarena-pool/deepseek-v4-1-flash-1017",
+          leftRoute: "antigravity/gemini-4-carbon",
+          round: 1,
+          mine: "**Тема:** Длинное окно\n\nЯ за компактный контекст.",
+          text: "Ответ B на открытие.",
+          used: [],
+          steps: [],
+          reasoning: "",
+          ms: 5200,
+        },
+        () => {},
+      ];
+    }
+    return origUseState(initial);
+  };
+  const openTree = expandDeep(
+    component({
+      phase: "result",
+      callId: "c_open_ui",
+      toolName: "spar",
+      block: {
+        type: "tool-result",
+        isError: false,
+        content: [{ type: "text", text: "[spar d72 · reply · coarena-pool/deepseek-v4-1-flash-1017 · started]\nTurn is running." }],
+      },
+    }),
+  );
+  React.useState = origUseState;
+  const openText = strings(openTree).join(" | ");
+  const cards = countAttr(openTree, "data-spar-card");
+  if (cards !== 2) throw new Error(`opening turn must render 2 cards (A starts + B replies), got ${cards}`);
+  if (!openText.includes("A начинает") || !openText.includes("старт") || !openText.includes("Я за компактный контекст.")) {
+    throw new Error(`missing A opening card in "${openText}"`);
+  }
+  if (!openText.includes("B отвечает") || !openText.includes("Ответ B на открытие.")) {
+    throw new Error(`missing B reply card in "${openText}"`);
+  }
+  console.log("opening A+B pair: ok — A начинает (старт) + B отвечает");
+}
+
 console.log("all card states render");
 
 // Exactly one polling loop may be scheduled per tick. A duplicated `setTimeout`

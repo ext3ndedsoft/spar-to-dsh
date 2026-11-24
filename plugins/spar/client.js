@@ -715,18 +715,20 @@ window.__ModuleLoader__.load({
 		}
 
 		/** The caller's own argument, rendered as a full speaker card identical to the opponent's. */
-		function LeftTurnCard({ text, route, id, round, final }) {
+		function LeftTurnCard({ text, route, id, round, final, opening }) {
 			if (typeof text !== "string" || text.trim() === "") return null;
 			const model = modelOf(route);
 			const who = route || model;
 			const tag =
-				final === true
-					? typeof round === "number" && round > 0
-						? `раунд ${round} · финал`
-						: "финальный ответ"
-					: typeof round === "number" && round > 0
-						? `раунд ${round}`
-						: "аргумент";
+				opening === true
+					? "старт"
+					: final === true
+						? typeof round === "number" && round > 0
+							? `раунд ${round} · финал`
+							: "финальный ответ"
+						: typeof round === "number" && round > 0
+							? `раунд ${round}`
+							: "аргумент";
 			return jsxs("div", {
 				"data-spar-card": "",
 				"data-tool": "spar",
@@ -736,7 +738,7 @@ window.__ModuleLoader__.load({
 				children: [
 					jsx(Head, {
 						v: {
-							name: "A отвечает",
+							name: opening === true ? "A начинает" : "A отвечает",
 							role: "left",
 							model,
 							route: route ?? model,
@@ -966,7 +968,7 @@ window.__ModuleLoader__.load({
 				const verdict = live.phase === "verdict";
 				const leftCard =
 					!verdict && typeof live.mine === "string" && live.mine.trim() !== ""
-						? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: live.id, round: live.leftRound })
+						? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: live.id, round: live.leftRound, opening: live.opening === true })
 						: null;
 				const rightCard = frame({ state: "running", kind: verdict ? "verdict" : "turn", route: live.route }, [
 					jsx(Head, {
@@ -1015,7 +1017,7 @@ window.__ModuleLoader__.load({
 					const err = durable.failed;
 					const leftCard =
 						typeof durable.mine === "string" && durable.mine.trim() !== ""
-							? jsx(LeftTurnCard, { text: durable.mine, route: durable.leftRoute, id: durable.id, round: durable.leftRound })
+							? jsx(LeftTurnCard, { text: durable.mine, route: durable.leftRoute, id: durable.id, round: durable.leftRound, opening: durable.opening === true })
 							: null;
 					const rightCard = frame({ state: err ? "error" : "running", route: durable.route }, [
 						jsx(Head, {
@@ -1047,7 +1049,7 @@ window.__ModuleLoader__.load({
 				const judge = durable.role === "judge";
 				const leftCard =
 					!judge && typeof durable.mine === "string" && durable.mine.trim() !== ""
-						? jsx(LeftTurnCard, { text: durable.mine, route: durable.leftRoute, id: durable.id, round: durable.leftRound })
+						? jsx(LeftTurnCard, { text: durable.mine, route: durable.leftRoute, id: durable.id, round: durable.leftRound, opening: durable.opening === true })
 						: null;
 				const rightCard = frame({ state: "done", kind: judge ? "verdict" : "turn", route: durable.route }, [
 					jsx(Head, {
@@ -1073,7 +1075,7 @@ window.__ModuleLoader__.load({
 				const state = live.error ? "error" : "done";
 				const leftCard =
 					!verdict && typeof live.mine === "string" && live.mine.trim() !== ""
-						? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: live.id, round: live.leftRound })
+						? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: live.id, round: live.leftRound, opening: live.opening === true })
 						: null;
 				const rightCard = frame({ state, kind: verdict ? "verdict" : "turn", route: live.route }, [
 					jsx(Head, {
@@ -1189,7 +1191,7 @@ window.__ModuleLoader__.load({
 			}
 			const leftCard =
 				!receipt && !verdictCard && !failed && info.role !== "left" && typeof live?.mine === "string" && live.mine.trim() !== ""
-					? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: info.debate || live.id, round: live.leftRound })
+					? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: info.debate || live.id, round: live.leftRound, opening: live.opening === true })
 					: null;
 			const rightCard = frame({ state: failed ? "error" : "done", kind: verdictCard ? "verdict" : "turn", route: info.route || info.model }, [
 				jsx(Head, {

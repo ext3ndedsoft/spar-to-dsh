@@ -1441,6 +1441,27 @@ const exec = { signal: undefined };
   eq(snap.truncated, true, "live state preserves truncated flag");
 }
 
+// 65. open surfaces A's opening topic and stance via /spar-turn and live state
+{
+  const { dir, cleanup } = sandboxDir("openingcard");
+  const { tool, routes } = makeHarness({ dir, text: "Стартовая атака B" });
+  const callerExec = { signal: undefined, rootCallId: "call_open_card", agent: { options: { provider: "antigravity", model: "gemini-4-carbon" } } };
+  await tool.execute({ action: "open", topic: "iOS vs Android", stance: "Я за Android", async: false }, callerExec);
+  const turnRoute = routes.find((route) => route.path === "/spar-turn")?.handler;
+  let body = "";
+  turnRoute({ method: "GET", url: "/spar-turn?call=call_open_card", headers: { host: "127.0.0.1:3080" } }, { writeHead() {}, end(raw) { body = raw; } });
+  const snap = JSON.parse(body);
+  eq(snap.opening, true, "opening turn is marked as opening");
+  eq(snap.leftRoute, "antigravity/gemini-4-carbon", "opening turn carries caller route");
+  includes(snap.mine, "**Тема:** iOS vs Android", "opening card includes topic");
+  includes(snap.mine, "Я за Android", "opening card includes stance");
+
+  const live = createLiveRegistry();
+  live.begin("c_open", { id: "d1", role: "right", phase: "reply", route: "zexkora/x", leftRoute: "antigravity/gemini-4-carbon", opening: true, mine: "**Тема:** T" });
+  eq(live.read("c_open").opening, true, "live registry preserves opening flag");
+  cleanup();
+}
+
 /* ----------------------------------------------------------------- report -- */
 
 const total = passed + failed;

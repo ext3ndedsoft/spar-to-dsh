@@ -212,6 +212,20 @@ function routeOfSide(side) {
   return "";
 }
 
+function openingText(debate) {
+  const parts = [];
+  if (typeof debate?.topic === "string" && debate.topic.trim() !== "") {
+    parts.push(`**Тема:** ${debate.topic.trim()}`);
+  }
+  if (typeof debate?.stance === "string" && debate.stance.trim() !== "") {
+    parts.push(debate.stance.trim());
+  }
+  if (Array.isArray(debate?.attach) && debate.attach.length > 0) {
+    parts.push(`Файлы: ${debate.attach.map((entry) => `\`${entry.path}\``).join(", ")}`);
+  }
+  return parts.join("\n\n");
+}
+
 /**
  * The model chosen as judge cannot also argue: it would rule on its own debate.
  * The panel names the judge once; an agent that reaches for it as a stand-in
@@ -1316,7 +1330,21 @@ export function apply(ctx, rawConfig = {}) {
       const leftRoute = routeOfSide(debate.left) || (typeof mineTurn?.route === "string" ? mineTurn.route : "");
       const leftRoundAt = (at) => (at >= 0 ? debate.turns.slice(0, at + 1).filter((entry) => entry.role === "left").length : null);
       if (index === -1) {
-        if (mine === null) continue;
+        if (mine === null) {
+          if (debate.pending?.call === callId && debate.turns.length === 0) {
+            return {
+              id,
+              pending: true,
+              opening: true,
+              mine: openingText(debate),
+              leftRoute: leftRoute || null,
+              leftRound: null,
+              failed: debate.failed ?? null,
+              route: debate.right?.label ?? null,
+            };
+          }
+          continue;
+        }
         // A closing rebuttal (`final: true`) has no opponent reply by design.
         if (mineTurn?.final === true && !isBusy(debate)) {
           return {
@@ -1350,10 +1378,18 @@ export function apply(ctx, rawConfig = {}) {
           ? 0
           : debate.turns.slice(0, index + 1).filter((entry) => entry.role === turn.role).length;
       const leftRound = mineIndex >= 0 ? leftRoundAt(mineIndex) : before?.role === "left" ? leftRoundAt(index - 1) : null;
+      const priorMine = before?.role === "left" && typeof before.text === "string" ? before.text : null;
+      const isOpening =
+        turn.role === "right" &&
+        mine === null &&
+        priorMine === null &&
+        !debate.turns.slice(0, index).some((entry) => entry.role === "left");
+      const mineOut = turn.role !== "judge" ? (mine ?? priorMine ?? (isOpening ? openingText(debate) : null)) : null;
       return {
         id,
         round,
         leftRound,
+        opening: isOpening,
         role: turn.role,
         route: typeof turn.route === "string" ? turn.route : null,
         leftRoute: turn.role !== "judge" && leftRoute !== "" ? leftRoute : null,
@@ -1361,7 +1397,7 @@ export function apply(ctx, rawConfig = {}) {
         text: typeof turn.text === "string" ? turn.text : "",
         used: Array.isArray(turn.used) ? turn.used.slice(0, 40) : [],
         truncated: turn.truncated === true,
-        mine: turn.role !== "judge" ? (mine ?? (before?.role === "left" && typeof before.text === "string" ? before.text : null)) : null,
+        mine: mineOut,
       };
     }    return null;
   };
@@ -1500,6 +1536,7 @@ export function apply(ctx, rawConfig = {}) {
       leftRoute: typeof options.leftRoute === "string" ? options.leftRoute : "",
       leftRound: typeof options.leftRound === "number" ? options.leftRound : null,
       round: typeof options.round === "number" ? options.round : null,
+      opening: options.opening === true,
       topic: debate.topic,
       // The card shows this above the reply: the caller argued too, and a card with
       // only the opponent's text reads as if the argument was never made.
@@ -1626,7 +1663,7 @@ export function apply(ctx, rawConfig = {}) {
         // Reuse the caller's in-memory debate when it has one: loading a second copy
         // and saving it beside the first is how a turn used to vanish from the file.
         const pending = held ?? loadDebate(config, id);
-        pending.pending = { phase, route: route.label, at: new Date().toISOString() };
+        pending.pending = { phase, route: route.label, at: new Date().toISOString(), call: callId };
         saveDebate(config, pending);
         Promise.resolve()
           .then(task)
@@ -1714,6 +1751,9 @@ export function apply(ctx, rawConfig = {}) {
           guard(id, async () => {
             const { turn } = await runTurn(debate, "right", "", {
               opening: true,
+              mine: openingText(debate),
+              leftRoute: routeOfSide(debate.left),
+              round: 1,
               maxTokens: args?.maxTokens,
               signal,
               callId,
