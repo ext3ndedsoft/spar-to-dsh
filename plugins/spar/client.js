@@ -1428,31 +1428,31 @@ window.__ModuleLoader__.load({
 @keyframes spp-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes spp-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.99)}}
 @keyframes spp-tab{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.spp .pill{display:flex;align-items:center;gap:8px;padding:5px 11px 5px 6px;border-radius:999px;
-	border:1px solid color-mix(in srgb,var(--p-opp,#6b7280) 28%,rgba(255,255,255,.11));
-	background:linear-gradient(135deg,color-mix(in srgb,var(--p-opp,#6b7280) 12%,transparent),color-mix(in srgb,var(--p-jud,#e5b83a) 8%,transparent) 70%),rgba(10,10,12,.92);
-	backdrop-filter:blur(12px);
-	box-shadow:0 12px 32px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.07);
-	transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
-.spp .pill:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--p-opp,#fff) 55%,rgba(255,255,255,.28));
-	box-shadow:0 14px 36px rgba(0,0,0,.62),0 0 18px color-mix(in srgb,var(--p-opp,#6b7280) 18%,transparent)}
-.spp .pill b{font-size:12px;font-weight:650;letter-spacing:.02em}
+.spp .pill{display:flex;align-items:center;gap:8px;text-align:left;padding:5px 12px 5px 5px;border-radius:999px;
+	border:1px solid rgba(255,255,255,.12);background:rgba(10,10,12,.92);backdrop-filter:blur(12px);
+	box-shadow:0 8px 24px rgba(0,0,0,.52);transition:transform .15s ease,border-color .15s ease}
+.spp .pill:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.24)}
+.spp .pill:active{transform:scale(.97)}
+.spp .pill-mark{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;
+	background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:var(--p-fg);flex:none}
+.spp .pill-mark[data-on="1"]{border-color:rgba(52,211,153,.45);color:#e6fff5}
+.spp .pill-txt{display:block;text-align:left}
+.spp .pill b{display:block;font-size:13.5px;font-weight:650;letter-spacing:-.01em;line-height:1;white-space:nowrap}
+.spp .pill-cap{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--p-dim);line-height:1;margin-top:3px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.spp .pill .st{width:4px;height:4px;border-radius:50%;background:var(--p-faint);flex:0 0 auto}
+.spp .pill .st[data-on="1"]{background:var(--p-accent2);box-shadow:0 0 6px var(--p-accent2)}
+.spp .pill-pair{display:flex;align-items:center;gap:5px;align-self:stretch;margin:4px 0 4px 2px;padding-left:10px;border-left:1px solid var(--p-line)}
+.spp .pill-pair svg{display:block;flex:none}
+.spp .pill-vs{font-size:9px;color:var(--p-dim);opacity:.55;line-height:1}
 .spp .mark{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;font-size:13px;font-weight:700;
 	background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.05));
 	border:1px solid rgba(255,255,255,.16);color:#f4f4f5;flex:none}
-.spp .pill-pair{display:inline-flex;align-items:center;gap:4px;padding:2px 5px;border-radius:999px;
-	background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07)}
 .spp .pchip{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
 	background:color-mix(in srgb,var(--chip,#6b7280) 16%,rgba(14,14,18,.95));
 	border:1px solid color-mix(in srgb,var(--chip,#6b7280) 42%,rgba(255,255,255,.1));
 	font-size:10px;font-weight:700;color:var(--p-fg);flex:none}
 .spp .pchip[data-brand="gemini"]{border-color:rgba(79,140,255,.5);box-shadow:0 0 8px rgba(49,134,255,.22)}
 .spp .pchip svg{display:block;flex:none}
-.spp .pill-vs{font-size:9px;color:var(--p-dim);opacity:.7;line-height:1}
-.spp .live-wrap{display:inline-flex;align-items:center;gap:4px;margin-left:1px}
-.spp .live{width:6px;height:6px;border-radius:99px;background:var(--p-faint)}
-.spp .live[data-on="1"]{background:var(--p-accent2);box-shadow:0 0 8px var(--p-accent2)}
-.spp .pill-cnt{font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--p-accent2)}
 
 .spp .panel{width:432px;max-width:calc(100vw - 26px);border-radius:20px;overflow:hidden;
 	border:1px solid rgba(255,255,255,.11);
@@ -1791,37 +1791,46 @@ window.__ModuleLoader__.load({
 				});
 			};
 
+			const pillIcon = (value, fallback) => {
+				if (value === "self") return "⚖";
+				const icon = brandSvg(brandOf(value), 13);
+				return icon ?? fallback;
+			};
+
 			const pill = jsxs("button", {
 				type: "button",
 				className: "pill",
 				key: "pill",
-				style: { "--p-opp": oppTint, "--p-jud": judTint },
 				"aria-label": open ? "Закрыть настройки спарринга" : "Открыть настройки спарринга",
 				"aria-expanded": open ? "true" : "false",
 				onClick: () => (open ? requestClose() : setOpen(true)),
 				title: open ? "свернуть" : `${pickedOpponent || "оппонент"} vs ${pickedJudge || "судья"}`,
 				children: [
-					jsx("span", { className: "mark", children: "◈" }),
-					jsx("b", { children: "spar" }),
+					jsx("span", { className: "pill-mark", "data-on": openDebates > 0 ? "1" : "0", "aria-hidden": "true", children: "◈" }),
+					jsxs("span", {
+						className: "pill-txt",
+						children: [
+							jsx("b", { children: "spar" }),
+							jsxs("span", {
+								className: "pill-cap",
+								children: [
+									jsx("span", { className: "st", "data-on": openDebates > 0 ? "1" : "0", "aria-hidden": "true" }),
+									jsx("span", { children: openDebates > 0 ? `${openDebates} активн.` : "готов" }),
+								],
+							}),
+						],
+					}),
 					pickedOpponent !== "" || pickedJudge !== ""
 						? jsxs("span", {
 								className: "pill-pair",
 								"aria-hidden": "true",
 								children: [
-									chipOf(pickedOpponent, "B", 12),
+									pillIcon(pickedOpponent, "B"),
 									jsx("span", { className: "pill-vs", children: "×" }),
-									chipOf(pickedJudge, "⚖", 12),
+									pillIcon(pickedJudge, "⚖"),
 								],
 							})
 						: null,
-					jsxs("span", {
-						className: "live-wrap",
-						"aria-hidden": "true",
-						children: [
-							jsx("span", { className: "live", "data-on": openDebates > 0 ? "1" : "0" }),
-							openDebates > 0 ? jsx("span", { className: "pill-cnt", children: String(openDebates) }) : null,
-						],
-					}),
 				],
 			});
 
