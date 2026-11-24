@@ -317,7 +317,65 @@ for (const [label, props, expect] of cases) {
   if (countAttr(pairTree, "data-spar-mine") !== 0) throw new Error("legacy data-spar-mine rendered instead of A card");
   if (!pairText.includes("A отвечает") || !pairText.includes("gemini-4-carbon")) throw new Error(`missing A speaker card header in "${pairText}"`);
   if (!pairText.includes("B отвечает") || !pairText.includes("deepseek-v4-1-flash-1017")) throw new Error(`missing B speaker card header in "${pairText}"`);
+  const brands = [];
+  const collectBrands = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) return n.forEach(collectBrands);
+    if (n.props?.["data-brand"]) brands.push(n.props["data-brand"]);
+    if (n.props?.children !== undefined) collectBrands(n.props.children);
+  };
+  collectBrands(pairTree);
+  if (brands.join(",") !== "gemini,deepseek") throw new Error(`expected gemini,deepseek brand logos, got ${brands.join(",")}`);
   console.log("A+B equal speaker pair: ok — 2 speaker cards");
+}
+
+// Verify model brand SVG icons for Gemini, Claude, OpenAI/ChatGPT, GLM, DeepSeek, Qwen, Kimi, Grok, Meta, Mistral, MiniMax, Perplexity, Cohere.
+{
+  const findBrandSvg = (n) => {
+    if (!n || typeof n !== "object") return null;
+    if (Array.isArray(n)) {
+      for (const item of n) {
+        const hit = findBrandSvg(item);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    if (n.props?.["data-spar-avatar"] !== undefined) {
+      const hasSvg = JSON.stringify(n.props.children).includes('"type":"svg"');
+      return { brand: n.props["data-brand"] ?? "", hasSvg };
+    }
+    return n.props?.children !== undefined ? findBrandSvg(n.props.children) : null;
+  };
+  for (const [route, expected] of [
+    ["antigravity/gemini-3.8-flash", "gemini"],
+    ["anthropic/claude-sonnet-4-6", "claude"],
+    ["openai/gpt-5", "openai"],
+    ["openai/chatgpt-4o-latest", "openai"],
+    ["zhipu/glm-4.7", "glm"],
+    ["coarena-pool/deepseek-v4-1-flash-1017", "deepseek"],
+    ["dashscope/qwen3-max", "qwen"],
+    ["moonshot/kimi-k2", "kimi"],
+    ["xai/grok-4", "grok"],
+    ["meta/llama-4-maverick", "meta"],
+    ["mistral/mistral-large", "mistral"],
+    ["minimax/minimax-m1", "minimax"],
+    ["perplexity/sonar-pro", "perplexity"],
+    ["cohere/command-a", "cohere"],
+  ]) {
+    const tree = expandDeep(
+      component({
+        phase: "result",
+        callId: "c_brand",
+        toolName: "spar",
+        block: { type: "tool-result", isError: false, content: [{ type: "text", text: `[spar d1 · r1 · ${route} · 1.0s]\nТест.` }] },
+      }),
+    );
+    const hit = findBrandSvg(tree);
+    if (!hit || hit.brand !== expected || !hit.hasSvg) {
+      throw new Error(`brand icon check failed for ${route}: got ${JSON.stringify(hit)}`);
+    }
+  }
+  console.log("brand SVG logos: ok — 14 routes matched");
 }
 
 console.log("all card states render");
