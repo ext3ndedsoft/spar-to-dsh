@@ -96,7 +96,7 @@ function makeHarness({ text = "opponent reply", finish = { kind: "stop" }, dir, 
     inject: (deps, callback) => {
       const webServer = {
         register: (route, label) => {
-          routes.push({ path: route.path, kind: route.kind, label });
+          routes.push({ path: route.path, kind: route.kind, label, handler: route.handler });
           return () => {};
         },
       };
@@ -1360,6 +1360,85 @@ const exec = { signal: undefined };
   includes(message, "aborted after", "a timed-out opponent fails the call");
   includes(message, "Не подставляй другую модель", "and the failure carries the do-not-swap instruction");
   cleanup();
+}
+
+// 62. final:true on say balances turn counts without triggering another opponent reply
+{
+  const { dir, cleanup } = sandboxDir("finalrebuttal");
+  const { tool, calls, routes } = makeHarness({ dir, text: "аргумент" });
+  const callerExec = { signal: undefined, rootCallId: "call_say_1", agent: { options: { provider: "antigravity", model: "gemini-4-carbon" } } };
+  await tool.execute({ action: "open", topic: "iOS vs Android", async: false }, { signal: undefined, rootCallId: "call_open_1" });
+  const callsBeforeSay = calls.length;
+  await tool.execute({ action: "say", id: "d1", message: "Мой первый ответ", async: false }, callerExec);
+  eq(calls.length, callsBeforeSay + 1, "normal say calls the opponent once");
+
+  const finalExec = { signal: undefined, rootCallId: "call_final_1", agent: { options: { provider: "antigravity", model: "gemini-4-carbon" } } };
+  const finalResult = await tool.execute({ action: "say", id: "d1", message: "Финальный ответ по TCO", final: true, async: false }, finalExec);
+  eq(calls.length, callsBeforeSay + 1, "final:true does not trigger another opponent reply");
+  includes(finalResult.text, "left", "final reply header marks left side");
+  includes(finalResult.text, "antigravity/gemini-4-carbon", "final reply header names caller route");
+  includes(finalResult.text, "Финальный ответ по TCO", "final reply body is returned");
+
+  const turnRoute = routes.find((route) => route.path === "/spar-turn")?.handler;
+  const askTurn = (callId) => {
+    let body = "";
+    turnRoute({ method: "GET", url: `/spar-turn?call=${callId}`, headers: { host: "127.0.0.1:3080" } }, { writeHead() {}, end(raw) { body = raw; } });
+    return JSON.parse(body);
+  };
+  const normalTurn = askTurn("call_say_1");
+  eq(normalTurn.leftRoute, "antigravity/gemini-4-carbon", "durable turn exposes caller route for A's card");
+  eq(normalTurn.leftRound, 1, "durable turn exposes A's round number");
+  eq(normalTurn.round, 2, "durable turn exposes B's round number");
+  const finalTurn = askTurn("call_final_1");
+  eq(finalTurn.role, "left", "durable final turn has role left");
+  eq(finalTurn.final, true, "durable final turn is marked final");
+  eq(finalTurn.pending, undefined, "final turn is not treated as pending");
+
+  calls.length = 0;
+  const ruled = await tool.execute({ action: "verdict", id: "d1", project: false, async: false }, callerExec);
+  const judgePrompt = calls[0]?.messages?.[0]?.content?.[0]?.text ?? "";
+  includes(judgePrompt, "SIDE A (turn 1)", "verdict numbers side A turns");
+  includes(judgePrompt, "SIDE A (turn 2)", "verdict includes second turn for balanced debate");
+  includes(judgePrompt, "SIDE B (turn 2)", "verdict numbers side B turns");
+  notIncludes(judgePrompt, "Do not penalize the side with fewer turns", "balanced turns omit the imbalance note");
+  notIncludes(judgePrompt, "only tool you have is `web`", "non-web opinion debate does not claim web tool is attached");
+  includes(ruled.text, "antigravity/gemini-4-carbon", "post-verdict disclosure names left's model route");
+  cleanup();
+}
+
+// 63. verdict notes unequal turn counts when left has fewer turns
+{
+  const { dir, cleanup } = sandboxDir("unequal");
+  const { tool, calls } = makeHarness({ dir, text: "ответ" });
+  await tool.execute({ action: "open", topic: "iOS vs Android", async: false }, exec);
+  await tool.execute({ action: "say", id: "d1", message: "ответ 1", async: false }, exec);
+  calls.length = 0;
+  await tool.execute({ action: "verdict", id: "d1", project: false, async: false }, exec);
+  const prompt = calls[0]?.messages?.[0]?.content?.[0]?.text ?? "";
+  includes(prompt, "Do not penalize the side with fewer turns", "imbalanced debate warns the judge not to penalize the shorter side");
+  cleanup();
+}
+
+// 64. live registry keeps leftRoute, leftRound, used, and truncated
+{
+  const live = createLiveRegistry();
+  live.begin("c_meta", {
+    id: "d4",
+    role: "right",
+    phase: "reply",
+    route: "zexkora/deepseek-v4.1-flash-1017",
+    leftRoute: "antigravity/gemini-4-carbon",
+    leftRound: 2,
+    round: 3,
+    mine: "Тезис стороны A",
+  });
+  live.settle("c_meta", { text: "Ответ B", used: ["read a.js (1-10/10)"], truncated: true });
+  const snap = live.read("c_meta");
+  eq(snap.leftRoute, "antigravity/gemini-4-carbon", "live state preserves leftRoute");
+  eq(snap.leftRound, 2, "live state preserves leftRound");
+  eq(snap.round, 3, "live state preserves round");
+  eq(snap.used[0], "read a.js (1-10/10)", "live state preserves used trail");
+  eq(snap.truncated, true, "live state preserves truncated flag");
 }
 
 /* ----------------------------------------------------------------- report -- */

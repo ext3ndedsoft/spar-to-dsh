@@ -49,11 +49,16 @@ export function createLiveRegistry() {
         role: meta.role ?? null,
         phase: meta.phase ?? null,
         route: meta.route ?? null,
+        leftRoute: typeof meta.leftRoute === "string" && meta.leftRoute !== "" ? meta.leftRoute : null,
+        leftRound: typeof meta.leftRound === "number" ? meta.leftRound : null,
+        round: typeof meta.round === "number" ? meta.round : null,
         topic: meta.topic ?? null,
         mine: typeof meta.mine === "string" && meta.mine !== "" ? meta.mine : null,
         startedAt: Date.now(),
         at: Date.now(),
         text: "",
+        used: [],
+        truncated: false,
         activity: null,
         reasoning: "",
         steps: [],
@@ -89,6 +94,8 @@ export function createLiveRegistry() {
       state.done = true;
       state.settledAt = Date.now();
       if (typeof patch.text === "string" && patch.text !== "") state.text = patch.text;
+      if (Array.isArray(patch.used)) state.used = patch.used.slice(0, 40);
+      if (typeof patch.truncated === "boolean") state.truncated = patch.truncated;
       if (typeof patch.error === "string" && patch.error !== "") state.error = patch.error;
       state.activity = null;
       // A turn that ends closes every older turn of the same debate: the previous
@@ -134,10 +141,15 @@ export function createLiveRegistry() {
         role: state.role,
         phase: state.phase,
         route: state.route,
+        leftRoute: state.leftRoute,
+        leftRound: state.leftRound,
+        round: state.round,
         mine: state.mine,
         startedAt: state.startedAt,
         ms: (state.done === true ? (state.settledAt ?? state.at) : Date.now()) - state.startedAt,
         text: state.text,
+        used: state.used,
+        truncated: state.truncated,
         activity: state.activity,
         reasoning: state.reasoning,
         steps: state.steps,

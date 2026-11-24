@@ -98,16 +98,8 @@ window.__ModuleLoader__.load({
 [data-spar-card]:hover [data-spar-icon], [data-spar-icon]:focus-visible { opacity: 1; }
 [data-spar-icon]:hover, [data-spar-icon]:focus-visible { color: var(--spar-fg); background: color-mix(in srgb, var(--spar-fg) 9%, transparent); outline: none; }
 
-[data-spar-mine] {
-	margin: 0 0 11px; padding: 7px 11px; border-radius: 8px;
-	font-size: 12px; line-height: 1.5; color: var(--spar-dim);
-	background: color-mix(in srgb, var(--spar-fg) 4%, transparent);
-	white-space: pre-wrap; max-height: 7.2em; overflow: auto;
-}
-[data-spar-mine]::before {
-	content: attr(data-label); display: block; margin-bottom: 2px;
-	font-size: 9.5px; letter-spacing: .09em; text-transform: uppercase; opacity: .7;
-}
+[data-spar-pair] { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+[data-spar-pair] > [data-spar-card] { margin: 0; }
 [data-spar-body], [data-spar-stream] { font-size: 13.5px; line-height: 1.62; color: var(--spar-fg); overflow-wrap: anywhere; }
 [data-spar-body] > div > div, [data-spar-stream] [data-spar-body] > div > div { margin: 0 0 7px; }
 [data-spar-body] > div > div:last-child { margin-bottom: 0; }
@@ -298,11 +290,13 @@ window.__ModuleLoader__.load({
 		function parse(block) {
 			const raw = rawText(block);
 			const match = HEADER.exec(raw);
-			if (match === null) return { utility: true, body: raw, model: "", debate: "", tag: "служебное", ms: null, receipt: false, pending: false };
+			if (match === null) return { utility: true, body: raw, model: "", route: "", role: "right", debate: "", tag: "служебное", ms: null, receipt: false, pending: false };
 			const body = raw.slice(match[0].length).trim();
 			const fields = match[1].split("·").map((part) => part.trim()).filter(Boolean);
 			let debate = "";
 			let model = "";
+			let route = "";
+			let role = "right";
 			let ms = null;
 			let tag = "возражение";
 			let receipt = false;
@@ -310,23 +304,32 @@ window.__ModuleLoader__.load({
 			let failed = false;
 			for (const field of fields) {
 				if (/^d\d+$/.test(field)) debate = field;
-				else if (field.includes("/")) model = field.slice(field.lastIndexOf("/") + 1);
-				else if (field === "verdict") tag = "приговор";
-				else if (field === "duel") tag = "дуэль";
+				else if (field.includes("/")) {
+					route = field;
+					model = field.slice(field.lastIndexOf("/") + 1);
+				} else if (field === "left") {
+					role = "left";
+					tag = "финальный ответ";
+				} else if (field === "verdict") {
+					role = "judge";
+					tag = "приговор";
+				} else if (field === "duel") tag = "дуэль";
 				else if (field === "models") tag = "каталог";
 				else if (field === "failed") {
 					tag = "сбой";
 					failed = true;
-				}
-				else if (/^r\d+$/.test(field)) tag = `раунд ${field.slice(1)}`;
-				else if (/^result\b/.test(field)) {
+				} else if (/^r\d+$/.test(field)) {
+					tag = role === "left" ? `раунд ${field.slice(1)} · финал` : `раунд ${field.slice(1)}`;
+				} else if (/^result\b/.test(field)) {
 					// A collected turn: its prose already lives in the turn's own card,
 					// so this one is a receipt, not a second copy of the answer.
 					receipt = true;
 					const round = /^result\s+r(\d+)$/.exec(field);
 					if (round !== null) tag = `раунд ${round[1]}`;
-					else if (field === "result verdict") tag = "приговор";
-					else if (field === "result pending") {
+					else if (field === "result verdict") {
+						role = "judge";
+						tag = "приговор";
+					} else if (field === "result pending") {
 						tag = "ещё пишет";
 						pending = true;
 					}
@@ -337,7 +340,7 @@ window.__ModuleLoader__.load({
 			}
 			if (body.includes("[reply truncated at")) tag = `${tag} · обрезано`;
 			// The model catalog carries a header but is still bookkeeping.
-			return { utility: tag === "каталог", body, model, debate, tag, ms, receipt, pending, failed };
+			return { utility: tag === "каталог", body, model, route, role, debate, tag, ms, receipt, pending, failed };
 		}
 
 		const LIVE_MS = 320;
@@ -610,10 +613,45 @@ window.__ModuleLoader__.load({
 			});
 		}
 
-		/** The caller's own argument, shown above the reply it provoked. */
-		function Mine({ text }) {
+		/** The caller's own argument, rendered as a full speaker card identical to the opponent's. */
+		function LeftTurnCard({ text, route, id, round, final }) {
 			if (typeof text !== "string" || text.trim() === "") return null;
-			return jsx("div", { "data-spar-mine": "", "data-label": "A · запрос оппоненту", children: text });
+			const model = modelOf(route);
+			const tag =
+				final === true
+					? typeof round === "number" && round > 0
+						? `раунд ${round} · финал`
+						: "финальный ответ"
+					: typeof round === "number" && round > 0
+						? `раунд ${round}`
+						: "аргумент";
+			return jsxs("div", {
+				"data-spar-card": "",
+				"data-tool": "spar",
+				"data-state": "done",
+				"data-kind": "turn",
+				style: { "--spar-rail": accent(model), "--spar-tint": tintOf(model) },
+				children: [
+					jsx(Head, {
+						v: {
+							name: "A отвечает",
+							role: "left",
+							model,
+							route: route ?? model,
+							tag,
+							tone: "",
+							meta: id || "",
+						},
+						children: jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text }) }),
+					}),
+					jsx(Reply, { text }),
+				],
+			});
+		}
+
+		function wrapPair(leftCard, rightCard) {
+			if (leftCard === null || leftCard === undefined) return rightCard;
+			return jsxs("div", { "data-spar-pair": "", children: [leftCard, rightCard] });
 		}
 
 		function Steps({ steps }) {
@@ -710,7 +748,6 @@ window.__ModuleLoader__.load({
 			return jsxs("div", {
 				"data-spar-stream": "",
 				children: [
-					jsx(Mine, { text: state?.mine }),
 					jsx(Steps, { steps }),
 					reasoning === ""
 						? null
@@ -754,6 +791,8 @@ window.__ModuleLoader__.load({
 		function Card({ props }) {
 			const [expanded, setExpanded] = React.useState(false);
 			const raw = props.block === undefined ? "" : rawText(props.block);
+			const failed = props.block?.isError === true;
+			const info = parse(props.block);
 			const started = raw.includes("· started]");
 			const running = props.phase === "preparing" || props.phase === "start";
 			const live = useLiveTurn(props.callId, running || started);
@@ -765,7 +804,10 @@ window.__ModuleLoader__.load({
 				isDuelLive,
 			);
 			const liveBKnown = liveB !== null && liveB !== undefined && liveB.known === true;
-			const durable = useDurableTurn(props.callId, started === true && liveKnown !== true);
+			const wantDurable =
+				started === true ||
+				(!running && !failed && !info.utility && !info.receipt && info.tag !== "дуэль" && info.debate !== "");
+			const durable = useDurableTurn(props.callId, wantDurable && liveKnown !== true);
 			const debateId = (/\[spar (d\d+)/.exec(raw) ?? [])[1] ?? "";
 			const newest = useNewestFor(debateId, props.callId, started);
 			const superseded =
@@ -819,7 +861,11 @@ window.__ModuleLoader__.load({
 					]);
 				}
 				const verdict = live.phase === "verdict";
-				return frame({ state: "running", kind: verdict ? "verdict" : "turn", route: live.route }, [
+				const leftCard =
+					!verdict && typeof live.mine === "string" && live.mine.trim() !== ""
+						? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: live.id, round: live.leftRound })
+						: null;
+				const rightCard = frame({ state: "running", kind: verdict ? "verdict" : "turn", route: live.route }, [
 					jsx(Head, {
 						v: {
 							name: stageName(live),
@@ -834,10 +880,8 @@ window.__ModuleLoader__.load({
 					}),
 					jsx(Running, { state: live, smooth }),
 				]);
+				return wrapPair(leftCard, rightCard);
 			}
-
-			const failed = props.block?.isError === true;
-			const info = parse(props.block);
 
 			// ---- a phase the debate has moved past ------------------------------
 			if (superseded && !expanded) {
@@ -863,13 +907,17 @@ window.__ModuleLoader__.load({
 			}
 
 			// ---- the durable record (survives reload and restart) ---------------
-			if (started && durable !== null && !(live !== null && live.done === true)) {
+			if (wantDurable && durable !== null && !(live !== null && live.done === true)) {
 				if (durable.pending === true) {
 					const err = durable.failed;
-					return frame({ state: err ? "error" : "running", route: durable.route }, [
+					const leftCard =
+						typeof durable.mine === "string" && durable.mine.trim() !== ""
+							? jsx(LeftTurnCard, { text: durable.mine, route: durable.leftRoute, id: durable.id, round: durable.leftRound })
+							: null;
+					const rightCard = frame({ state: err ? "error" : "running", route: durable.route }, [
 						jsx(Head, {
 							v: {
-								name: "B",
+								name: "B отвечает",
 								role: "right",
 								model: modelOf(durable.route),
 								route: durable.route,
@@ -878,14 +926,27 @@ window.__ModuleLoader__.load({
 								meta: durable.id,
 							},
 						}),
-						jsx(Mine, { text: durable.mine }),
 						err
 							? jsx("div", { "data-spar-body": "", children: String(err.message ?? "ход оборвался") })
 							: jsx("div", { "data-spar-quiet": "", children: "ответ ещё пишется…" }),
 					]);
+					return wrapPair(leftCard, rightCard);
+				}
+				if (durable.role === "left") {
+					return jsx(LeftTurnCard, {
+						text: durable.text,
+						route: durable.route,
+						id: durable.id,
+						round: durable.round,
+						final: durable.final === true,
+					});
 				}
 				const judge = durable.role === "judge";
-				return frame({ state: "done", kind: judge ? "verdict" : "turn", route: durable.route }, [
+				const leftCard =
+					!judge && typeof durable.mine === "string" && durable.mine.trim() !== ""
+						? jsx(LeftTurnCard, { text: durable.mine, route: durable.leftRoute, id: durable.id, round: durable.leftRound })
+						: null;
+				const rightCard = frame({ state: "done", kind: judge ? "verdict" : "turn", route: durable.route }, [
 					jsx(Head, {
 						v: {
 							name: judge ? "судья" : stageName({ role: durable.role }),
@@ -898,16 +959,20 @@ window.__ModuleLoader__.load({
 						},
 						children: jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text: durable.text }) }),
 					}),
-					jsx(Mine, { text: durable.mine }),
 					jsx(Reply, { text: durable.text, used: durable.used, truncated: durable.truncated }),
 				]);
+				return wrapPair(leftCard, rightCard);
 			}
 
 			// ---- a settled registry entry ---------------------------------------
 			if (started && live !== null && live.done === true) {
 				const verdict = live.phase === "verdict";
 				const state = live.error ? "error" : "done";
-				return frame({ state, kind: verdict ? "verdict" : "turn", route: live.route }, [
+				const leftCard =
+					!verdict && typeof live.mine === "string" && live.mine.trim() !== ""
+						? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: live.id, round: live.leftRound })
+						: null;
+				const rightCard = frame({ state, kind: verdict ? "verdict" : "turn", route: live.route }, [
 					jsx(Head, {
 						v: {
 							name: stageName(live),
@@ -915,15 +980,15 @@ window.__ModuleLoader__.load({
 							phase: live.phase,
 							model: modelOf(live.route),
 							route: live.route,
-							tag: live.error ? "не ответила" : verdict ? "приговор" : "возражение",
+							tag: live.error ? "не ответила" : verdict ? "приговор" : typeof live.round === "number" ? `раунд ${live.round}` : "возражение",
 							tone: live.error ? "error" : verdict ? "verdict" : "",
 							meta: `${fmtSeconds(live.ms)}${live.id === null ? "" : ` · ${live.id}`}`,
 						},
 						children: live.error ? null : jsx("span", { "data-spar-tools": "", children: jsx(CopyButton, { text: live.text }) }),
 					}),
-					jsx(Mine, { text: live.mine }),
-					live.error ? jsx("div", { "data-spar-body": "", children: live.error }) : jsx(Reply, { text: live.text }),
+					live.error ? jsx("div", { "data-spar-body": "", children: live.error }) : jsx(Reply, { text: live.text, used: live.used, truncated: live.truncated }),
 				]);
+				return wrapPair(leftCard, rightCard);
 			}
 
 			// ---- utility results: list / show / close / models -------------------
@@ -987,13 +1052,13 @@ window.__ModuleLoader__.load({
 			const receipt = info.receipt === true && failed !== true;
 			const verdictCard = info.tag.startsWith("приговор");
 			const head = {
-				name: failed ? "сбой" : verdictCard ? "судья" : "B",
-				role: verdictCard ? "judge" : "right",
+				name: failed ? "сбой" : verdictCard ? "судья" : info.role === "left" ? "A отвечает" : "B отвечает",
+				role: verdictCard ? "judge" : info.role === "left" ? "left" : "right",
 				model: info.model,
-				route: info.model,
+				route: info.route || info.model,
 				tag: failed ? "не ответила" : info.tag,
 				tone: failed ? "error" : verdictCard ? "verdict" : "",
-				meta: `${fmtSeconds(info.ms)}${info.debate === "" ? "" : ` · ${info.debate}`}`,
+				meta: [fmtSeconds(info.ms), info.debate].filter(Boolean).join(" · "),
 			};
 			if (receipt && !expanded) {
 				return frame({ state: "done", kind: verdictCard ? "verdict" : "turn", route: info.model }, [

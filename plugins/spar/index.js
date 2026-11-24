@@ -207,6 +207,11 @@ function sameRoute(left, right) {
   return left !== null && right !== null && left.provider === right.provider && left.model === right.model;
 }
 
+function routeOfSide(side) {
+  if (side?.provider && side?.model) return `${side.provider}/${side.model}`;
+  return "";
+}
+
 /**
  * The model chosen as judge cannot also argue: it would rule on its own debate.
  * The panel names the judge once; an agent that reaches for it as a stand-in
@@ -1050,7 +1055,7 @@ const DESCRIPTION = [
   "",
   "Actions:",
   "- open   — { topic, opponent?, mode?, intensity?, stance?, files?, opening? } → new id + the other side's opening. `opening:\"me\"` starts silent so you speak first.",
-  "- say    — { id, message } → they answer with their strongest objection; your message is recorded as your turn.",
+  "- say    — { id, message, final? } → they answer with their strongest objection; your message is recorded as your turn. Pass `final: true` for your closing rebuttal before `verdict` so you can answer their last point and balance turn counts without triggering another reply.",
   '- duel   — { topic, sides?:["gemini","claude"], rounds?, mode?, intensity? } → two models argue FOR/AGAINST while you watch; returns the full exchange.',
   "- verdict— { id, judge? } → a ruling from this same model in a clean context, with the sides blinded, their order randomised, and the mapping disclosed only afterwards. The arbiter never argues, so it owes neither side a defence. `judge:\"self\"` follows the live route; an alias names another one.",
   "- show   — { id } → the whole transcript, readable, for re-reading after a compaction.",
@@ -1076,6 +1081,11 @@ const PARAMETERS = {
     message: {
       type: "string",
       description: "Your argument for this round (say). Write the actual claim, not a request to argue.",
+    },
+    final: {
+      type: "boolean",
+      description:
+        "say only: record your closing rebuttal without triggering another opponent reply, so you can answer the opponent's last point and balance turn counts before action:\"verdict\".",
     },
     stance: {
       type: "string",
@@ -1176,7 +1186,7 @@ function resultHeader(debate, turn, route) {
 function roundHint(debate) {
   const rounds = debate.turns.filter((entry) => entry.role === "right").length;
   if (rounds < 5 || debate.kind === "duel") return "";
-  return `\n\n· раундов: ${rounds}. Если новых аргументов нет, закрывай спор: action:"verdict".`;
+  return `\n\n· раундов: ${rounds}. Если новых аргументов нет, дай финальный ответ (say с final:true) или закрывай спор: action:"verdict".`;
 }
 
 function clip(text) {
@@ -1300,28 +1310,53 @@ export function apply(ctx, rawConfig = {}) {
       // The caller's own turn carries the same call id (it is saved before the
       // opponent starts), so a reply is the non-"left" turn of that call.
       const index = debate.turns.findIndex((turn) => turn?.call === callId && turn.role !== "left");
-      const mineTurn = debate.turns.find((turn) => turn?.call === callId && turn.role === "left");
+      const mineIndex = debate.turns.findIndex((turn) => turn?.call === callId && turn.role === "left");
+      const mineTurn = mineIndex >= 0 ? debate.turns[mineIndex] : undefined;
       const mine = typeof mineTurn?.text === "string" ? mineTurn.text : null;
+      const leftRoute = routeOfSide(debate.left) || (typeof mineTurn?.route === "string" ? mineTurn.route : "");
+      const leftRoundAt = (at) => (at >= 0 ? debate.turns.slice(0, at + 1).filter((entry) => entry.role === "left").length : null);
       if (index === -1) {
         if (mine === null) continue;
+        // A closing rebuttal (`final: true`) has no opponent reply by design.
+        if (mineTurn?.final === true && !isBusy(debate)) {
+          return {
+            id,
+            round: leftRoundAt(mineIndex),
+            role: "left",
+            final: true,
+            route: leftRoute || debate.left?.label || null,
+            ms: 0,
+            text: mine,
+            used: [],
+            truncated: false,
+          };
+        }
         // The question is on disk but the answer is not (yet, or ever): the card
         // can still show what was asked, and why there is no reply.
         return {
           id,
           pending: true,
           mine,
+          leftRoute: leftRoute || null,
+          leftRound: leftRoundAt(mineIndex),
           failed: debate.failed ?? null,
           route: debate.right?.label ?? null,
         };
       }
       const turn = debate.turns[index];
       const before = index > 0 ? debate.turns[index - 1] : null;
-      const round = debate.turns.slice(0, index + 1).filter((entry) => entry.role !== "left").length;
+      const round =
+        turn.role === "judge"
+          ? 0
+          : debate.turns.slice(0, index + 1).filter((entry) => entry.role === turn.role).length;
+      const leftRound = mineIndex >= 0 ? leftRoundAt(mineIndex) : before?.role === "left" ? leftRoundAt(index - 1) : null;
       return {
         id,
         round,
+        leftRound,
         role: turn.role,
         route: typeof turn.route === "string" ? turn.route : null,
+        leftRoute: turn.role !== "judge" && leftRoute !== "" ? leftRoute : null,
         ms: typeof turn.ms === "number" ? turn.ms : 0,
         text: typeof turn.text === "string" ? turn.text : "",
         used: Array.isArray(turn.used) ? turn.used.slice(0, 40) : [],
@@ -1462,6 +1497,9 @@ export function apply(ctx, rawConfig = {}) {
       role: side,
       phase: options.phase ?? "reply",
       route: route.label,
+      leftRoute: typeof options.leftRoute === "string" ? options.leftRoute : "",
+      leftRound: typeof options.leftRound === "number" ? options.leftRound : null,
+      round: typeof options.round === "number" ? options.round : null,
       topic: debate.topic,
       // The card shows this above the reply: the caller argued too, and a card with
       // only the opponent's text reads as if the argument was never made.
@@ -1515,7 +1553,7 @@ export function apply(ctx, rawConfig = {}) {
       debate.pending = null;
       debate.failed = null;
       saveDebate(config, debate);
-      live.settle(callId, { text: turn.text });
+      live.settle(callId, { text: turn.text, used: turn.used, truncated: turn.truncated === true });
       return { debate, turn, route };
     } catch (error) {
       // A failed turn must not leave the debate "pending": `result` would wait
@@ -1705,19 +1743,59 @@ export function apply(ctx, rawConfig = {}) {
         }
         if (Array.isArray(args?.files) && args.files.length > 0) addAttachments(debate, config, args.files);
 
+        const caller = exec?.agent?.options;
+        if (debate.left && (!debate.left.provider || !debate.left.model) && typeof caller?.provider === "string" && typeof caller?.model === "string") {
+          debate.left.provider = caller.provider;
+          debate.left.model = caller.model;
+        }
+        const leftRoute = routeOfSide(debate.left);
+        const leftRound = debate.turns.filter((entry) => entry.role === "left").length + 1;
+        const rightRound = debate.turns.filter((entry) => entry.role === "right").length + 1;
+
+        if (args?.final === true) {
+          debate.turns.push({
+            role: "left",
+            text: message.slice(0, MAX_TURN_CHARS),
+            at: new Date().toISOString(),
+            call: callId,
+            ...(leftRoute ? { route: leftRoute } : {}),
+            final: true,
+          });
+          if (debate.turns.length > MAX_TURNS) debate.turns = debate.turns.slice(-MAX_TURNS);
+          debate.pending = null;
+          debate.failed = null;
+          saveDebate(config, debate);
+          const who = leftRoute || debate.left?.label || "left";
+          return { text: `[spar ${id} · left · r${leftRound} · ${who}]\n${clip(message)}` };
+        }
+
         // The caller's argument is saved NOW, before the opponent starts. It used to be
         // written only when the opponent finished, so while the reply was running
         // (and forever if it failed) the card had no trace of what was asked.
-        debate.turns.push({ role: "left", text: message.slice(0, MAX_TURN_CHARS), at: new Date().toISOString(), call: callId });
+        debate.turns.push({
+          role: "left",
+          text: message.slice(0, MAX_TURN_CHARS),
+          at: new Date().toISOString(),
+          call: callId,
+          ...(leftRoute ? { route: leftRoute } : {}),
+        });
         debate.failed = null;
         saveDebate(config, debate);
 
         return start(id, debate.right, "reply", () =>
           guard(id, async () => {
-            const { turn } = await runTurn(debate, "right", message, { maxTokens: args?.maxTokens, signal, callId, mine: message, repo: repoOf(debate) });
-            // The reply only. The caller's own argument is already in the card above
-            // this one (`mine`), and printing it again here made the transcript show
-            // the same paragraph twice — the service answer duplicated the turn.
+            const { turn } = await runTurn(debate, "right", message, {
+              maxTokens: args?.maxTokens,
+              signal,
+              callId,
+              mine: message,
+              leftRoute,
+              leftRound,
+              round: rightRound,
+              repo: repoOf(debate),
+            });
+            // The reply only. The caller's own argument is rendered as its own speaker
+            // card above this one, and printing it again here duplicated the turn.
             return { text: `${header(debate, turn, debate.right)}\n${clip(turn.text)}${usedLine(turn)}${roundHint(debate)}` };
           }),
           debate,
@@ -1848,7 +1926,11 @@ export function apply(ctx, rawConfig = {}) {
           const aRole = swap ? "right" : "left";
           const bRole = swap ? "left" : "right";
           const sideOf = (role) => (role === aRole ? "A" : "B");
-          const labelOf = (role) => (role === "left" ? debate.left.label : debate.right.label);
+          const labelOf = (role) => {
+            if (role !== "left") return debate.right.label;
+            const route = routeOfSide(debate.left);
+            return route !== "" ? `${debate.left.label} (${route})` : debate.left.label;
+          };
           // The arbiter reads the project the debaters argued about, not whatever
           // directory the session happens to sit in: a verdict that cannot open a
           // cited file is just a second opinion on prose.
@@ -1868,13 +1950,29 @@ export function apply(ctx, rawConfig = {}) {
             (schema) => schema.name !== "web" || debate.web === true || args?.web === true,
           );
           const judgeAllowed = new Set(judgeSchemas.map((schema) => schema.name));
+          const sideCounts = { A: 0, B: 0 };
           const record = debate.turns
             .filter((turn) => turn.role !== "judge")
-            .map((turn) => `SIDE ${sideOf(turn.role)}: ${turn.text}${usedLine(turn)}`)
+            .map((turn) => {
+              const label = sideOf(turn.role);
+              sideCounts[label] += 1;
+              return `SIDE ${label} (turn ${sideCounts[label]}): ${turn.text}${usedLine(turn)}`;
+            })
             .join("\n\n");
-          const scope = projectish
-            ? ""
-            : "\n\nNOTE: no side opened a project file in this debate, and it is not about the project. Rule on the arguments and on any sources they cite; the only tool you have is `web` for checking a factual claim.";
+          const scopeNotes = [];
+          if (!projectish) {
+            scopeNotes.push(
+              judgeAllowed.has("web")
+                ? "NOTE: no side opened a project file in this debate, and it is not about the project. Rule on the arguments and on any sources they cite; the only tool you have is `web` for checking a factual claim."
+                : "NOTE: this debate has no project files or web tools attached. Rule strictly on the logic, internal consistency, and evidence presented in the arguments themselves — do not invent or assume external tool checks.",
+            );
+          }
+          if (sideCounts.A !== sideCounts.B) {
+            scopeNotes.push(
+              `NOTE: SIDE A had ${sideCounts.A} turn(s) and SIDE B had ${sideCounts.B} turn(s). Do not penalize the side with fewer turns for leaving the other side's final turn unanswered.`,
+            );
+          }
+          const scope = scopeNotes.length === 0 ? "" : `\n\n${scopeNotes.join("\n")}`;
           const prompt = `PROPOSITION: ${debate.topic}\n\n## DEBATE\n${record}${scope}`;
           live.begin(callId, { id: debate.id, role: "judge", phase: "verdict", route: judge.label, topic: debate.topic });
           let reply;

@@ -84,6 +84,8 @@ for (const id of ["dsh-spar-style", "dsh-spar-panel-style"]) {
 }
 const cardCss = injectedStyles.find((style) => style.id === "dsh-spar-style").textContent;
 if (!cardCss.includes("[data-spar-head]")) throw new Error("the card sheet lost its head rule");
+if (!cardCss.includes("[data-spar-pair]")) throw new Error("the card sheet is missing [data-spar-pair]");
+if (cardCss.includes("[data-spar-mine]")) throw new Error("legacy [data-spar-mine] footnote CSS should be removed");
 console.log(`styles: ok — ${styleIds.join(", ")}`);
 
 /** Resolve a function element by invoking it, the way the renderer would. */
@@ -203,7 +205,50 @@ const cases = [
     { phase: "start", callId: "c1", toolName: "spar", block: { name: "spar", arguments: { action: "list" } } },
     { empty: true },
   ],
+  [
+    "left final card",
+    {
+      phase: "result",
+      callId: "c1",
+      toolName: "spar",
+      block: {
+        type: "tool-result",
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: "[spar d1 · left · r3 · antigravity/gemini-4-carbon]\nМой финальный **тезис**.",
+          },
+        ],
+      },
+    },
+    { has: ["A отвечает", "gemini-4-carbon", "раунд 3 · финал", "Мой финальный", "тезис"] },
+  ],
 ];
+
+function expandDeep(node) {
+  if (node === null || node === undefined) return null;
+  if (Array.isArray(node)) return node.map(expandDeep);
+  if (typeof node !== "object") return node;
+  if (typeof node.type === "function") return expandDeep(node.type(node.props));
+  if (node.props && node.props.children !== undefined) {
+    return { ...node, props: { ...node.props, children: expandDeep(node.props.children) } };
+  }
+  return node;
+}
+
+function countAttr(node, attr, count = 0) {
+  if (node === null || node === undefined) return count;
+  if (Array.isArray(node)) {
+    for (const item of node) count = countAttr(item, attr, count);
+    return count;
+  }
+  if (typeof node === "object") {
+    if (node.props && Object.prototype.hasOwnProperty.call(node.props, attr)) count += 1;
+    if (node.props && node.props.children !== undefined) count = countAttr(node.props.children, attr, count);
+  }
+  return count;
+}
 
 for (const [label, props, expect] of cases) {
   const tree = expand(component(props));
@@ -221,6 +266,60 @@ for (const [label, props, expect] of cases) {
   }
   console.log(`${label}: ok — ${text.slice(0, 110)}`);
 }
+
+// Verify that when A speaks to B (live turn with `mine`), both A and B render
+// as equal [data-spar-card] speaker cards inside [data-spar-pair], never a footnote.
+{
+  let callIndex = 0;
+  const origUseState = React.useState;
+  React.useState = (initial) => {
+    callIndex += 1;
+    // Inside Card: #1 expanded, #2 useLiveTurn state (live).
+    if (callIndex === 2) {
+      return [
+        {
+          known: true,
+          done: false,
+          id: "d71",
+          role: "right",
+          phase: "reply",
+          route: "coarena-pool/deepseek-v4-1-flash-1017",
+          leftRoute: "antigravity/gemini-4-carbon",
+          leftRound: 2,
+          round: 2,
+          mine: "Аргумент **стороны A**",
+          text: "Ответ **стороны B**",
+          steps: [],
+          reasoning: "",
+          ms: 4200,
+        },
+        () => {},
+      ];
+    }
+    return origUseState(initial);
+  };
+  const pairTree = expandDeep(
+    component({
+      phase: "result",
+      callId: "c_pair",
+      toolName: "spar",
+      block: {
+        type: "tool-result",
+        isError: false,
+        content: [{ type: "text", text: "[spar d71 · reply · coarena-pool/deepseek-v4-1-flash-1017 · started]\nTurn is running." }],
+      },
+    }),
+  );
+  React.useState = origUseState;
+  const pairText = strings(pairTree).join(" | ");
+  const cards = countAttr(pairTree, "data-spar-card");
+  if (cards !== 2) throw new Error(`A+B pair must render 2 equal [data-spar-card] elements, got ${cards}`);
+  if (countAttr(pairTree, "data-spar-mine") !== 0) throw new Error("legacy data-spar-mine rendered instead of A card");
+  if (!pairText.includes("A отвечает") || !pairText.includes("gemini-4-carbon")) throw new Error(`missing A speaker card header in "${pairText}"`);
+  if (!pairText.includes("B отвечает") || !pairText.includes("deepseek-v4-1-flash-1017")) throw new Error(`missing B speaker card header in "${pairText}"`);
+  console.log("A+B equal speaker pair: ok — 2 speaker cards");
+}
+
 console.log("all card states render");
 
 // Exactly one polling loop may be scheduled per tick. A duplicated `setTimeout`
