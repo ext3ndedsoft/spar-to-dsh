@@ -1,7 +1,24 @@
 # Установка
 
-Плагин — это папка с шестью файлами и одна строка в `cordis.patch.yml`. Ниже
-оба пути: скриптом и руками.
+Репозиторий оформлен как полноценный DSH-бандл (`package.json` + `cordis.patch.yml`),
+поэтому его можно поставить прямо из интерфейса DSH по Git-ссылке, через
+`install.mjs` или вручную. Не смешивайте два способа одновременно: если раньше
+ставили через `install.mjs`, перед установкой бандла выполните
+`node install.mjs --uninstall`.
+
+## Через интерфейс DSH (бандл)
+
+Откройте **Плагины → Добавить плагин** и вставьте:
+
+```text
+https://github.com/ext3ndedsoft/spar-to-dsh
+```
+
+Или через CLI:
+
+```bash
+dsh plugin --profile web add https://github.com/ext3ndedsoft/spar-to-dsh
+```
 
 ## Скриптом
 

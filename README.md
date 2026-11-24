@@ -81,6 +81,22 @@
 
 ## Быстрый старт
 
+### Через интерфейс DSH (рекомендуется)
+
+Откройте **Плагины → Добавить плагин** в DSH и вставьте ссылку на репозиторий:
+
+```text
+https://github.com/ext3ndedsoft/spar-to-dsh
+```
+
+Или через CLI:
+
+```bash
+dsh plugin --profile web add https://github.com/ext3ndedsoft/spar-to-dsh
+```
+
+### Через скрипт `install.mjs`
+
 ```bash
 git clone https://github.com/ext3ndedsoft/spar-to-dsh.git
 cd spar-to-dsh

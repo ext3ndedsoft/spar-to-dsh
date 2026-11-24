@@ -64,6 +64,22 @@ agent ──── open "<topic>" ────►  opponent reads the project (r
 
 ## Quick start
 
+### Via DSH Plugin Manager (recommended)
+
+Open **Plugins → Add plugin** in DSH and paste the repository URL:
+
+```text
+https://github.com/ext3ndedsoft/spar-to-dsh
+```
+
+Or via CLI:
+
+```bash
+dsh plugin --profile web add https://github.com/ext3ndedsoft/spar-to-dsh
+```
+
+### Via `install.mjs`
+
 ```bash
 git clone https://github.com/ext3ndedsoft/spar-to-dsh.git
 cd spar-to-dsh
