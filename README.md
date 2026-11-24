@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png?v=3" alt="spar — вторая модель, которая возражает" width="100%">
+  <img src="assets/banner.png?v=4" alt="spar — вторая модель, которая возражает" width="100%">
 </p>
 
 <p align="center">
@@ -59,9 +59,9 @@
 ## Как это выглядит
 
 <p align="center">
-  <img src="assets/panel-spar.png?v=3" alt="Панель настроек spar" width="360">
+  <img src="assets/panel-spar.png?v=4" alt="Панель настроек spar" width="360">
   &nbsp;&nbsp;
-  <img src="assets/card-spar.png?v=3" alt="Карточки спора и приговора в чате" width="360">
+  <img src="assets/card-spar.png?v=4" alt="Карточки спора и приговора в чате" width="360">
 </p>
 
 ```text

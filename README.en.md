@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.en.png?v=3" alt="spar — a second model that argues back" width="100%">
+  <img src="assets/banner.en.png?v=4" alt="spar — a second model that argues back" width="100%">
 </p>
 
 <p align="center">
@@ -46,9 +46,9 @@ language, project access, readings per turn, budgets and per-role temperature.
 ## How it looks
 
 <p align="center">
-  <img src="assets/panel-spar.png?v=3" alt="spar settings overlay" width="360">
+  <img src="assets/panel-spar.png?v=4" alt="spar settings overlay" width="360">
   &nbsp;&nbsp;
-  <img src="assets/card-spar.png?v=3" alt="spar debate and verdict cards" width="360">
+  <img src="assets/card-spar.png?v=4" alt="spar debate and verdict cards" width="360">
 </p>
 
 ```text

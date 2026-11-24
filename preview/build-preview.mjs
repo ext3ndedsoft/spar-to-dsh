@@ -168,10 +168,10 @@ const rightTag = variant === 'panel' ? '◈ spar' : 'd14 · blind A/B';
 const html = `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>spar preview · ${variant}</title>
 <style>
-  html,body{margin:0;width:456px;height:860px;background:#ffffff;overflow:hidden}
+  html,body{margin:0;width:456px;height:860px;background:#0d1117;overflow:hidden}
   .frame{width:456px;height:860px;padding:20px 24px;box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-    background:#ffffff;border:2px solid #0a0a0a;border-radius:0;overflow:hidden}
+    background:#ffffff;border:2px solid #0a0a0a;border-radius:18px;overflow:hidden}
   .top-bar{width:408px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
   .tag-blk{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;background:#0a0a0a;color:#fff;
     font-family:Consolas,'Cascadia Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.7px}
