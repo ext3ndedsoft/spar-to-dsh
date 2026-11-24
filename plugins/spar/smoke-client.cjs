@@ -317,15 +317,18 @@ for (const [label, props, expect] of cases) {
   if (countAttr(pairTree, "data-spar-mine") !== 0) throw new Error("legacy data-spar-mine rendered instead of A card");
   if (!pairText.includes("A отвечает") || !pairText.includes("gemini-4-carbon")) throw new Error(`missing A speaker card header in "${pairText}"`);
   if (!pairText.includes("B отвечает") || !pairText.includes("deepseek-v4-1-flash-1017")) throw new Error(`missing B speaker card header in "${pairText}"`);
-  const brands = [];
+  const cardBrands = [];
+  const avatarBrands = [];
   const collectBrands = (n) => {
     if (!n || typeof n !== "object") return;
     if (Array.isArray(n)) return n.forEach(collectBrands);
-    if (n.props?.["data-brand"]) brands.push(n.props["data-brand"]);
+    if (n.props?.["data-spar-card"] !== undefined && n.props?.["data-brand"]) cardBrands.push(n.props["data-brand"]);
+    if (n.props?.["data-spar-avatar"] !== undefined && n.props?.["data-brand"]) avatarBrands.push(n.props["data-brand"]);
     if (n.props?.children !== undefined) collectBrands(n.props.children);
   };
   collectBrands(pairTree);
-  if (brands.join(",") !== "gemini,deepseek") throw new Error(`expected gemini,deepseek brand logos, got ${brands.join(",")}`);
+  if (cardBrands.join(",") !== "gemini,deepseek") throw new Error(`expected gemini,deepseek card brands, got ${cardBrands.join(",")}`);
+  if (avatarBrands.join(",") !== "gemini,deepseek") throw new Error(`expected gemini,deepseek avatar brands, got ${avatarBrands.join(",")}`);
   console.log("A+B equal speaker pair: ok — 2 speaker cards");
 }
 
@@ -341,26 +344,26 @@ for (const [label, props, expect] of cases) {
       return null;
     }
     if (n.props?.["data-spar-avatar"] !== undefined) {
-      const hasSvg = JSON.stringify(n.props.children).includes('"type":"svg"');
-      return { brand: n.props["data-brand"] ?? "", hasSvg };
+      const serialized = JSON.stringify(n.props.children);
+      return { brand: n.props["data-brand"] ?? "", hasSvg: serialized.includes('"type":"svg"'), serialized };
     }
     return n.props?.children !== undefined ? findBrandSvg(n.props.children) : null;
   };
-  for (const [route, expected] of [
-    ["antigravity/gemini-3.8-flash", "gemini"],
-    ["anthropic/claude-sonnet-4-6", "claude"],
-    ["openai/gpt-5", "openai"],
-    ["openai/chatgpt-4o-latest", "openai"],
-    ["zhipu/glm-4.7", "glm"],
-    ["coarena-pool/deepseek-v4-1-flash-1017", "deepseek"],
-    ["dashscope/qwen3-max", "qwen"],
-    ["moonshot/kimi-k2", "kimi"],
-    ["xai/grok-4", "grok"],
-    ["meta/llama-4-maverick", "meta"],
-    ["mistral/mistral-large", "mistral"],
-    ["minimax/minimax-m1", "minimax"],
-    ["perplexity/sonar-pro", "perplexity"],
-    ["cohere/command-a", "cohere"],
+  for (const [route, expected, colorNeedles] of [
+    ["antigravity/gemini-3.8-flash", "gemini", ["#3186FF", "#08B962", "#F94543", "#FABC12"]],
+    ["anthropic/claude-sonnet-4-6", "claude", ["#D97757"]],
+    ["openai/gpt-5", "openai", ["#10A37F"]],
+    ["openai/chatgpt-4o-latest", "openai", ["#10A37F"]],
+    ["zhipu/glm-4.7", "glm", ["#4F7BFF"]],
+    ["coarena-pool/deepseek-v4-1-flash-1017", "deepseek", ["#4D6BFE"]],
+    ["dashscope/qwen3-max", "qwen", ["#4F6DFF", "#A855F7"]],
+    ["moonshot/kimi-k2", "kimi", ["#1783FF"]],
+    ["xai/grok-4", "grok", ["#F4F4F5"]],
+    ["meta/llama-4-maverick", "meta", ["#0082FB"]],
+    ["mistral/mistral-large", "mistral", ["#FFAF00", "#FA500F", "#E10500"]],
+    ["minimax/minimax-m1", "minimax", ["#E2167E", "#FE603C"]],
+    ["perplexity/sonar-pro", "perplexity", ["#22B8CD"]],
+    ["cohere/command-a", "cohere", ["#39594D", "#D18EE2", "#FF7759"]],
   ]) {
     const tree = expandDeep(
       component({
@@ -374,8 +377,13 @@ for (const [label, props, expect] of cases) {
     if (!hit || hit.brand !== expected || !hit.hasSvg) {
       throw new Error(`brand icon check failed for ${route}: got ${JSON.stringify(hit)}`);
     }
+    for (const color of colorNeedles) {
+      if (!hit.serialized.includes(color)) {
+        throw new Error(`brand icon ${route} missing official color ${color}`);
+      }
+    }
   }
-  console.log("brand SVG logos: ok — 14 routes matched");
+  console.log("brand SVG logos: ok — 14 routes matched with official colors");
 }
 
 // Regression: when `async: false` completes (phase === "result", no `· started]`),
