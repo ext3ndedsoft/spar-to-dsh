@@ -1429,13 +1429,12 @@ window.__ModuleLoader__.load({
 @keyframes spp-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(6px) scale(.99)}}
 @keyframes spp-tab{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .spp .pill{display:flex;align-items:center;gap:8px;text-align:left;padding:5px 12px 5px 5px;border-radius:999px;
-	border:1px solid rgba(255,255,255,.12);background:rgba(10,10,12,.92);backdrop-filter:blur(12px);
-	box-shadow:0 8px 24px rgba(0,0,0,.52);transition:transform .15s ease,border-color .15s ease}
-.spp .pill:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.24)}
+	border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.96);backdrop-filter:blur(12px);
+	box-shadow:0 8px 24px rgba(0,0,0,.78);transition:transform .15s ease,border-color .15s ease}
+.spp .pill:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.26)}
 .spp .pill:active{transform:scale(.97)}
-.spp .pill-mark{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;
-	background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:var(--p-fg);flex:none}
-.spp .pill-mark[data-on="1"]{border-color:rgba(52,211,153,.45);color:#e6fff5}
+.spp .pill-mark{width:26px;height:26px;display:block;flex:none}
+.spp .pill-mark svg{display:block}
 .spp .pill-txt{display:block;text-align:left}
 .spp .pill b{display:block;font-size:13.5px;font-weight:650;letter-spacing:-.01em;line-height:1;white-space:nowrap}
 .spp .pill-cap{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--p-dim);line-height:1;margin-top:3px;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -1797,6 +1796,37 @@ window.__ModuleLoader__.load({
 				return icon ?? fallback;
 			};
 
+			const sparRingSvg = (active) =>
+				jsxs("svg", {
+					width: 26,
+					height: 26,
+					viewBox: "0 0 26 26",
+					"aria-hidden": "true",
+					children: [
+						jsx("circle", {
+							cx: 13,
+							cy: 13,
+							r: 11.5,
+							fill: "none",
+							stroke: active ? "#34d399" : "rgba(255,255,255,0.22)",
+							strokeWidth: 2.4,
+						}),
+						jsx("polygon", {
+							points: "13,7.5 18.5,13 13,18.5 7.5,13",
+							fill: "none",
+							stroke: "#f0f0f0",
+							strokeWidth: 1.5,
+							strokeLinejoin: "round",
+						}),
+						jsx("circle", {
+							cx: 13,
+							cy: 13,
+							r: 1.7,
+							fill: active ? "#34d399" : "#f0f0f0",
+						}),
+					],
+				});
+
 			const pill = jsxs("button", {
 				type: "button",
 				className: "pill",
@@ -1806,7 +1836,7 @@ window.__ModuleLoader__.load({
 				onClick: () => (open ? requestClose() : setOpen(true)),
 				title: open ? "свернуть" : `${pickedOpponent || "оппонент"} vs ${pickedJudge || "судья"}`,
 				children: [
-					jsx("span", { className: "pill-mark", "data-on": openDebates > 0 ? "1" : "0", "aria-hidden": "true", children: "◈" }),
+					jsx("span", { className: "pill-mark", "data-on": openDebates > 0 ? "1" : "0", "aria-hidden": "true", children: sparRingSvg(openDebates > 0) }),
 					jsxs("span", {
 						className: "pill-txt",
 						children: [
@@ -2204,7 +2234,25 @@ window.__ModuleLoader__.load({
 							jsxs("div", {
 								className: "top",
 								children: [
-									jsx("span", { className: "mark", children: "◈" }),
+									jsx("span", {
+										className: "mark",
+										"aria-hidden": "true",
+										children: jsxs("svg", {
+											width: 15,
+											height: 15,
+											viewBox: "0 0 24 24",
+											children: [
+												jsx("polygon", {
+													points: "12,3.5 20.5,12 12,20.5 3.5,12",
+													fill: "none",
+													stroke: "#f4f4f5",
+													strokeWidth: 2,
+													strokeLinejoin: "round",
+												}),
+												jsx("circle", { cx: 12, cy: 12, r: 2.2, fill: "#f4f4f5" }),
+											],
+										}),
+									}),
 									jsxs("div", {
 										children: [
 											jsxs("div", {
