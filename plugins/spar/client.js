@@ -567,9 +567,18 @@ window.__ModuleLoader__.load({
 						});
 				};
 				tick();
+				const onVisible = () => {
+					if (!stopped && !hiddenTab()) tick();
+				};
+				if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+					document.addEventListener("visibilitychange", onVisible);
+				}
 				return () => {
 					stopped = true;
 					clearTimeout(timer);
+					if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+						document.removeEventListener("visibilitychange", onVisible);
+					}
 				};
 			}, [callId, enabled]);
 			return state;
@@ -897,10 +906,12 @@ window.__ModuleLoader__.load({
 				isDuelLive,
 			);
 			const liveBKnown = liveB !== null && liveB !== undefined && liveB.known === true;
+			const finishedResult = !running && !started && props.block !== undefined;
 			const wantDurable =
 				started === true ||
 				(!running && !failed && !info.utility && !info.receipt && info.tag !== "дуэль" && info.debate !== "");
-			const durable = useDurableTurn(props.callId, wantDurable && liveKnown !== true);
+			const liveDone = liveKnown && live.done === true;
+			const durable = useDurableTurn(props.callId, wantDurable && (!liveKnown || (finishedResult && !liveDone)));
 			const debateId = (/\[spar (d\d+)/.exec(raw) ?? [])[1] ?? "";
 			const newest = useNewestFor(debateId, props.callId, started);
 			const superseded =
@@ -909,8 +920,7 @@ window.__ModuleLoader__.load({
 				newest !== null &&
 				typeof newest.callId === "string" &&
 				newest.callId !== props.callId;
-			const liveDone = liveKnown && live.done === true;
-			const working = liveKnown && (!liveDone || (isDuelLive && liveBKnown && liveB.done !== true));
+			const working = !finishedResult && liveKnown && (!liveDone || (isDuelLive && liveBKnown && liveB.done !== true));
 			const smooth = useSmoothText(live?.text ?? "", working);
 			const smoothB = useSmoothText(liveB?.text ?? "", working);
 			const tint = (route) => ({ "--spar-rail": accent(route), "--spar-tint": tintOf(route) });
@@ -1058,7 +1068,7 @@ window.__ModuleLoader__.load({
 			}
 
 			// ---- a settled registry entry ---------------------------------------
-			if (started && live !== null && live.done === true) {
+			if ((started || finishedResult) && live !== null && live.done === true) {
 				const verdict = live.phase === "verdict";
 				const state = live.error ? "error" : "done";
 				const leftCard =
@@ -1154,7 +1164,7 @@ window.__ModuleLoader__.load({
 				meta: [fmtSeconds(info.ms), info.debate].filter(Boolean).join(" · "),
 			};
 			if (receipt && !expanded) {
-				return frame({ state: "done", kind: verdictCard ? "verdict" : "turn", route: info.model }, [
+				return frame({ state: "done", kind: verdictCard ? "verdict" : "turn", route: info.route || info.model }, [
 					jsx(Head, { v: head }),
 					jsxs("div", {
 						"data-spar-receipt": "",
@@ -1177,7 +1187,11 @@ window.__ModuleLoader__.load({
 					}),
 				]);
 			}
-			return frame({ state: failed ? "error" : "done", kind: verdictCard ? "verdict" : "turn", route: info.model }, [
+			const leftCard =
+				!receipt && !verdictCard && !failed && info.role !== "left" && typeof live?.mine === "string" && live.mine.trim() !== ""
+					? jsx(LeftTurnCard, { text: live.mine, route: live.leftRoute, id: info.debate || live.id, round: live.leftRound })
+					: null;
+			const rightCard = frame({ state: failed ? "error" : "done", kind: verdictCard ? "verdict" : "turn", route: info.route || info.model }, [
 				jsx(Head, {
 					v: head,
 					children:
@@ -1197,6 +1211,7 @@ window.__ModuleLoader__.load({
 						})
 					: null,
 			]);
+			return wrapPair(leftCard, rightCard);
 		}
 
 

@@ -378,6 +378,65 @@ for (const [label, props, expect] of cases) {
   console.log("brand SVG logos: ok — 14 routes matched");
 }
 
+// Regression: when `async: false` completes (phase === "result", no `· started]`),
+// a stale `live` snapshot with `done: false` and partial text must NEVER keep the
+// card stuck in `working` with "пишет…" or cut off the final answer.
+{
+  let callIndex = 0;
+  const origUseState = React.useState;
+  React.useState = (initial) => {
+    callIndex += 1;
+    if (callIndex === 2) {
+      return [
+        {
+          known: true,
+          done: false,
+          id: "d72",
+          role: "right",
+          phase: "reply",
+          route: "coarena-pool/deepseek-v4-1-flash-1017",
+          leftRoute: "antigravity/gemini-4-carbon",
+          leftRound: 1,
+          round: 2,
+          mine: "Тезис стороны A",
+          text: "Обрезанный кус",
+          steps: [],
+          reasoning: "",
+          ms: 8100,
+        },
+        () => {},
+      ];
+    }
+    return origUseState(initial);
+  };
+  const settledTree = expandDeep(
+    component({
+      phase: "result",
+      callId: "c_sync_done",
+      toolName: "spar",
+      block: {
+        type: "tool-result",
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: "[spar d72 · r2 · coarena-pool/deepseek-v4-1-flash-1017 · 8.7s]\nПолный финальный ответ без обрыва.",
+          },
+        ],
+      },
+    }),
+  );
+  React.useState = origUseState;
+  const settledText = strings(settledTree).join(" | ");
+  const cards = countAttr(settledTree, "data-spar-card");
+  if (cards !== 2) throw new Error(`settled sync result with stale live must render 2 cards, got ${cards}`);
+  if (!settledText.includes("Полный финальный ответ без обрыва.")) throw new Error(`settled sync result missing final body: "${settledText}"`);
+  if (settledText.includes("пишет…") || settledText.includes("Обрезанный кус")) {
+    throw new Error(`settled sync result stayed stuck on stale streaming state: "${settledText}"`);
+  }
+  console.log("sync settle with stale live: ok — full text, no пишет…");
+}
+
 console.log("all card states render");
 
 // Exactly one polling loop may be scheduled per tick. A duplicated `setTimeout`
