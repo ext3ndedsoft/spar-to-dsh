@@ -1796,33 +1796,25 @@ window.__ModuleLoader__.load({
 				return icon ?? fallback;
 			};
 
-			const sparRingSvg = (active) =>
+			const sparRingSvg = () =>
 				jsxs("svg", {
 					width: 26,
 					height: 26,
 					viewBox: "0 0 26 26",
 					"aria-hidden": "true",
 					children: [
-						jsx("circle", {
-							cx: 13,
-							cy: 13,
-							r: 11.5,
-							fill: "none",
-							stroke: active ? "#34d399" : "rgba(255,255,255,0.22)",
-							strokeWidth: 2.4,
-						}),
 						jsx("polygon", {
-							points: "13,7.5 18.5,13 13,18.5 7.5,13",
+							points: "13,5.5 20.5,13 13,20.5 5.5,13",
 							fill: "none",
 							stroke: "#f0f0f0",
-							strokeWidth: 1.5,
+							strokeWidth: 1.7,
 							strokeLinejoin: "round",
 						}),
 						jsx("circle", {
 							cx: 13,
 							cy: 13,
-							r: 1.7,
-							fill: active ? "#34d399" : "#f0f0f0",
+							r: 2,
+							fill: "#f0f0f0",
 						}),
 					],
 				});
@@ -1836,7 +1828,7 @@ window.__ModuleLoader__.load({
 				onClick: () => (open ? requestClose() : setOpen(true)),
 				title: open ? "свернуть" : `${pickedOpponent || "оппонент"} vs ${pickedJudge || "судья"}`,
 				children: [
-					jsx("span", { className: "pill-mark", "data-on": openDebates > 0 ? "1" : "0", "aria-hidden": "true", children: sparRingSvg(openDebates > 0) }),
+					jsx("span", { className: "pill-mark", "aria-hidden": "true", children: sparRingSvg() }),
 					jsxs("span", {
 						className: "pill-txt",
 						children: [
